@@ -130,7 +130,12 @@ int headless_render_init(int width, int height)
     g_headless_ctx.width = width;
     g_headless_ctx.height = height;
     g_headless_ctx.bpp = 4;
-    g_headless_ctx.context = NULL;
+#ifdef OSMESA_RENDERING
+    g_headless_ctx.osmesa_context = NULL;
+#endif
+#ifdef EGL_RENDERING
+    g_headless_ctx.egl_context = NULL;
+#endif
 
     size_t buffer_size = width * height * g_headless_ctx.bpp;
     g_headless_ctx.buffer = malloc(buffer_size);

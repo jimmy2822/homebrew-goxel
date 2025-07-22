@@ -135,12 +135,12 @@ OSMesaContext headless_render_create_context(void);
  * High-level rendering functions that integrate with Goxel's rendering system
  */
 
-// Forward declarations for Goxel types
-typedef struct image image_t;
-typedef struct camera camera_t;
-typedef struct layer layer_t;
-typedef struct volume volume_t;
-typedef struct material material_t;
+// Forward declarations for Goxel types - use existing includes
+#include "../core/image.h"
+#include "../camera.h"
+#include "../core/layer.h"
+#include "../core/volume.h"
+#include "../core/material.h"
 
 /*
  * Function: headless_render_scene_with_camera

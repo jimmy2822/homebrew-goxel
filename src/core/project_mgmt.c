@@ -16,14 +16,37 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "goxel_core.h"
+#include "goxel_core.h" 
 #include "project_mgmt.h"
 #include "utils/path.h"
+#include "../goxel.h"  // For goxel_import_file, goxel_export_to_file, etc.
+#include "../../ext_src/uthash/uthash.h"  // For DL_FOREACH macro
 #include <time.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
+
+// Helper function to get file extension
+static const char *path_get_ext(const char *path)
+{
+    if (!path) return NULL;
+    const char *dot = strrchr(path, '.');
+    if (!dot || dot == path) return NULL;
+    return dot + 1;
+}
+
+// Helper function to get basename (filename without path)
+static const char *path_get_basename(const char *path)
+{
+    if (!path) return NULL;
+    const char *sep = strrchr(path, '/');
+    #ifdef _WIN32
+    const char *sep2 = strrchr(path, '\\');
+    if (sep2 && (!sep || sep2 > sep)) sep = sep2;
+    #endif
+    return sep ? sep + 1 : path;
+}
 
 static void get_current_timestamp(char *buffer, size_t buffer_size)
 {
@@ -185,9 +208,14 @@ int project_get_metadata(goxel_core_t *ctx, project_metadata_t *metadata)
     
     // Get bounding box
     if (ctx->image->active_layer && ctx->image->active_layer->volume) {
-        float bbox[2][3];
+        int bbox[2][3];
         volume_get_bbox(ctx->image->active_layer->volume, bbox, false);
-        memcpy(metadata->bbox, bbox, sizeof(bbox));
+        // Convert int bbox to float bbox for metadata
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 3; j++) {
+                metadata->bbox[i][j] = (float)bbox[i][j];
+            }
+        }
     }
     
     // Version info

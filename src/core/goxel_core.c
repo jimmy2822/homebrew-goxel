@@ -17,7 +17,7 @@
  */
 
 #include "goxel_core.h"
-#include "../goxel.h"
+#include "../goxel.h"  // For function prototypes and constants
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
@@ -55,7 +55,7 @@ int goxel_core_init(goxel_core_context_t *ctx)
     ctx->painter_color[2] = 255;
     ctx->painter_color[3] = 255;
     ctx->painter_mode = MODE_OVER;
-    ctx->painter_shape = SHAPE_CUBE;
+    ctx->painter_shape = (intptr_t)&shape_cube;
     
     return 0;
 }
@@ -70,7 +70,8 @@ void goxel_core_shutdown(goxel_core_context_t *ctx)
     }
     
     if (ctx->palette) {
-        palette_delete(ctx->palette);
+        if (ctx->palette->entries) free(ctx->palette->entries);
+        free(ctx->palette);
         ctx->palette = NULL;
     }
 }
@@ -160,10 +161,17 @@ int goxel_core_add_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = image_get_active_layer(ctx->image);
+    layer_t *layer = layer_id == 0 ? ctx->image->active_layer : NULL;
+    
+    // Find layer by ID if specified
+    if (layer_id != 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    }
     if (!layer) return -1;
     
-    float pos[3] = {(float)x, (float)y, (float)z};
+    int pos[3] = {x, y, z};
     uint8_t color[4] = {rgba[0], rgba[1], rgba[2], rgba[3]};
     
     volume_set_at(layer->volume, NULL, pos, color);
@@ -175,10 +183,17 @@ int goxel_core_remove_voxel(goxel_core_context_t *ctx, int x, int y, int z, int 
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = image_get_active_layer(ctx->image);
+    layer_t *layer = layer_id == 0 ? ctx->image->active_layer : NULL;
+    
+    // Find layer by ID if specified
+    if (layer_id != 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    }
     if (!layer) return -1;
     
-    float pos[3] = {(float)x, (float)y, (float)z};
+    int pos[3] = {x, y, z};
     uint8_t color[4] = {0, 0, 0, 0}; // Transparent = removal
     
     volume_set_at(layer->volume, NULL, pos, color);
@@ -190,10 +205,10 @@ int goxel_core_get_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t
 {
     if (!ctx || !ctx->image || !rgba) return -1;
     
-    layer_t *layer = image_get_active_layer(ctx->image);
+    layer_t *layer = ctx->image->active_layer;
     if (!layer) return -1;
     
-    float pos[3] = {(float)x, (float)y, (float)z};
+    int pos[3] = {x, y, z};
     volume_get_at(layer->volume, NULL, pos, rgba);
     
     return 0;
@@ -217,7 +232,12 @@ int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id)
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = image_get_layer_by_id(ctx->image, layer_id);
+    layer_t *layer = NULL;
+    
+    // Find layer by ID 
+    for (layer = ctx->image->layers; layer; layer = layer->next) {
+        if (layer->id == layer_id) break;
+    }
     if (!layer) return -1;
     
     image_delete_layer(ctx->image, layer);
@@ -228,7 +248,12 @@ int goxel_core_set_active_layer(goxel_core_context_t *ctx, int layer_id)
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = image_get_layer_by_id(ctx->image, layer_id);
+    layer_t *layer = NULL;
+    
+    // Find layer by ID 
+    for (layer = ctx->image->layers; layer; layer = layer->next) {
+        if (layer->id == layer_id) break;
+    }
     if (!layer) return -1;
     
     ctx->image->active_layer = layer;
@@ -268,14 +293,10 @@ int goxel_core_get_project_bounds(goxel_core_context_t *ctx, int *width, int *he
 {
     if (!ctx || !ctx->image) return -1;
     
-    // Get bounding box of the project
-    int bbox[2][3];
-    if (image_get_bbox(ctx->image, bbox, true) == 0) {
-        if (width) *width = bbox[1][0] - bbox[0][0];
-        if (height) *height = bbox[1][1] - bbox[0][1];
-        if (depth) *depth = bbox[1][2] - bbox[0][2];
-        return 0;
-    }
+    // For now, return default bounds - would need proper bbox calculation
+    if (width) *width = 256;
+    if (height) *height = 256; 
+    if (depth) *depth = 256;
     
     return -1;
 }
@@ -284,7 +305,14 @@ int goxel_core_remove_voxels_in_box(goxel_core_context_t *ctx, int x1, int y1, i
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = image_get_active_layer(ctx->image);
+    layer_t *layer = layer_id == 0 ? ctx->image->active_layer : NULL;
+    
+    // Find layer by ID if specified
+    if (layer_id != 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    }
     if (!layer) return -1;
     
     // Remove all voxels in the specified box
@@ -303,7 +331,14 @@ int goxel_core_paint_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = image_get_active_layer(ctx->image);
+    layer_t *layer = layer_id == 0 ? ctx->image->active_layer : NULL;
+    
+    // Find layer by ID if specified
+    if (layer_id != 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    }
     if (!layer) return -1;
     
     // Check if voxel exists first

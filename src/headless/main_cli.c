@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>  // For getopt on POSIX systems
 
 static cli_context_t *g_cli_context = NULL;
 static goxel_core_context_t *g_goxel_context = NULL;

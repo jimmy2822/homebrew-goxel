@@ -20,9 +20,7 @@
 #define CAMERA_HEADLESS_H
 
 #include <stdbool.h>
-
-// Forward declaration
-typedef struct camera camera_t;
+#include "../camera.h"  // Provides camera_t
 
 /*
  * Function: headless_camera_set_preset

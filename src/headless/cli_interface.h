@@ -50,7 +50,7 @@ typedef enum {
     CLI_OPT_FLAG
 } cli_option_type_t;
 
-typedef struct cli_option {
+struct cli_option {
     const char *short_name;
     const char *long_name;
     const char *description;
@@ -64,16 +64,16 @@ typedef struct cli_option {
         bool bool_default;
     } default_value;
     struct cli_option *next;
-} cli_option_t;
+};
 
-typedef struct cli_command {
+struct cli_command {
     const char *name;
     const char *description;
     const char *usage;
     cli_option_t *options;
     cli_result_t (*handler)(cli_context_t *ctx, cli_args_t *args);
     struct cli_command *next;
-} cli_command_t;
+};
 
 typedef struct cli_parsed_option {
     const char *name;
@@ -87,23 +87,23 @@ typedef struct cli_parsed_option {
     struct cli_parsed_option *next;
 } cli_parsed_option_t;
 
-typedef struct cli_args {
+struct cli_args {
     int argc;
     char **argv;
     int arg_index;
     cli_parsed_option_t *options;
     char **positional_args;
     int positional_count;
-} cli_args_t;
+};
 
-typedef struct cli_context {
+struct cli_context {
     cli_command_t *commands;
     const char *program_name;
     bool verbose;
     bool quiet;
     const char *config_file;
     void *goxel_context;
-} cli_context_t;
+};
 
 cli_context_t *cli_create_context(const char *program_name);
 void cli_destroy_context(cli_context_t *ctx);
