@@ -105,10 +105,23 @@ int goxel_core_paint_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8
 int goxel_core_get_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4]);
 
 // Layer operations
-int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name);
-int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id);
+int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name, uint8_t rgba[4], int visible);
+int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id, const char *name);
 int goxel_core_set_active_layer(goxel_core_context_t *ctx, int layer_id);
 int goxel_core_get_layer_count(goxel_core_context_t *ctx);
+int goxel_core_merge_layers(goxel_core_context_t *ctx, int source_id, int target_id, const char *source_name, const char *target_name);
+int goxel_core_set_layer_visibility(goxel_core_context_t *ctx, int layer_id, const char *name, int visible);
+int goxel_core_rename_layer(goxel_core_context_t *ctx, int layer_id, const char *old_name, const char *new_name);
+
+// Rendering operations
+int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset);
+
+// Export operations
+int goxel_core_export_project(goxel_core_context_t *ctx, const char *output_file, const char *format);
+
+// Scripting operations
+int goxel_core_execute_script_file(goxel_core_context_t *ctx, const char *script_file);
+int goxel_core_execute_script(goxel_core_context_t *ctx, const char *script_code);
 
 // Include project management functions after core type is defined
 #include "project_mgmt.h"

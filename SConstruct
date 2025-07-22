@@ -130,10 +130,24 @@ gui_dependent_files = [
     'goxel.c',  # Contains GUI-specific code
     'tools.c',  # Contains GUI tool interfaces
     'filters.c',  # Contains GUI filter interfaces
+    # Additional files with duplicates in core/
+    'image.c',  # Duplicate of core/image.c
+    'layer.c',  # Duplicate of core/layer.c
+    'material.c',  # Duplicate of core/material.c
+    'palette.c',  # Duplicate of core/palette.c
+    'shape.c',  # Duplicate of core/shape.c
+    'file_format.c',  # Duplicate of core/file_format.c
+    'volume.c',  # Duplicate of core/volume_ops.c
+    'volume_utils.c',  # Duplicate of core/volume_utils.c
+    # Utils duplicates
+    'utils/b64.c', 'utils/box.c', 'utils/cache.c', 'utils/color.c',
+    'utils/geometry.c', 'utils/gl.c', 'utils/img.c', 'utils/ini.c',
+    'utils/json.c', 'utils/mo_reader.c', 'utils/mustache.c', 'utils/path.c',
+    'utils/sound.c', 'utils/texture.c', 'utils/vec.c',
 ]
 
 # Directories with GUI dependencies for CLI builds
-gui_dependent_dirs = ['tools', 'filters', 'formats']
+gui_dependent_dirs = ['tools', 'filters', 'formats', 'utils']
 
 for root, dirnames, filenames in os.walk('src'):
     # Skip subdirectories we handle separately
@@ -157,7 +171,8 @@ for root, dirnames, filenames in os.walk('src'):
             other_sources.append(os.path.join(root, filename))
 
 sources = core_sources + other_sources
-if not env['headless']:
+# Include GUI sources only if NOT building headless OR CLI tools
+if not env['headless'] and not env['cli_tools']:
     sources += gui_sources
 if env['headless'] or env['cli_tools']:
     sources += headless_sources

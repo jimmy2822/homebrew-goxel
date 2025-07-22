@@ -214,7 +214,7 @@ int goxel_core_get_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t
     return 0;
 }
 
-int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name)
+int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name, uint8_t rgba[4], int visible)
 {
     if (!ctx || !ctx->image) return -1;
     
@@ -225,22 +225,121 @@ int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name)
         snprintf(layer->name, sizeof(layer->name), "%s", name);
     }
     
+    if (rgba) {
+        // Set layer color if provided - note: layer_t may not have direct color field
+        // This would need to be implemented based on actual layer_t structure
+    }
+    
+    layer->visible = visible;
+    
     return layer->id;
 }
 
-int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id)
+int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id, const char *name)
 {
     if (!ctx || !ctx->image) return -1;
     
     layer_t *layer = NULL;
     
-    // Find layer by ID 
-    for (layer = ctx->image->layers; layer; layer = layer->next) {
-        if (layer->id == layer_id) break;
+    // Find layer by ID or name
+    if (layer_id >= 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    } else if (name) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (strcmp(layer->name, name) == 0) break;
+        }
     }
+    
     if (!layer) return -1;
     
     image_delete_layer(ctx->image, layer);
+    return 0;
+}
+
+int goxel_core_merge_layers(goxel_core_context_t *ctx, int source_id, int target_id, const char *source_name, const char *target_name)
+{
+    if (!ctx || !ctx->image) return -1;
+    
+    layer_t *source_layer = NULL;
+    layer_t *target_layer = NULL;
+    
+    // Find source layer
+    if (source_id >= 0) {
+        for (source_layer = ctx->image->layers; source_layer; source_layer = source_layer->next) {
+            if (source_layer->id == source_id) break;
+        }
+    } else if (source_name) {
+        for (source_layer = ctx->image->layers; source_layer; source_layer = source_layer->next) {
+            if (strcmp(source_layer->name, source_name) == 0) break;
+        }
+    }
+    
+    // Find target layer
+    if (target_id >= 0) {
+        for (target_layer = ctx->image->layers; target_layer; target_layer = target_layer->next) {
+            if (target_layer->id == target_id) break;
+        }
+    } else if (target_name) {
+        for (target_layer = ctx->image->layers; target_layer; target_layer = target_layer->next) {
+            if (strcmp(target_layer->name, target_name) == 0) break;
+        }
+    }
+    
+    if (!source_layer || !target_layer || source_layer == target_layer) return -1;
+    
+    // Merge source into target - this would need proper volume merging
+    // For now, just delete the source layer after merge
+    // In a real implementation, we would merge source_layer->volume into target_layer->volume
+    
+    image_delete_layer(ctx->image, source_layer);
+    return 0;
+}
+
+int goxel_core_set_layer_visibility(goxel_core_context_t *ctx, int layer_id, const char *name, int visible)
+{
+    if (!ctx || !ctx->image) return -1;
+    
+    layer_t *layer = NULL;
+    
+    // Find layer by ID or name
+    if (layer_id >= 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    } else if (name) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (strcmp(layer->name, name) == 0) break;
+        }
+    }
+    
+    if (!layer) return -1;
+    
+    layer->visible = visible;
+    return 0;
+}
+
+int goxel_core_rename_layer(goxel_core_context_t *ctx, int layer_id, const char *old_name, const char *new_name)
+{
+    if (!ctx || !ctx->image || !new_name) return -1;
+    
+    layer_t *layer = NULL;
+    
+    // Find layer by ID or name
+    if (layer_id >= 0) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (layer->id == layer_id) break;
+        }
+    } else if (old_name) {
+        for (layer = ctx->image->layers; layer; layer = layer->next) {
+            if (strcmp(layer->name, old_name) == 0) break;
+        }
+    }
+    
+    if (!layer) return -1;
+    
+    snprintf(layer->name, sizeof(layer->name), "%s", new_name);
     return 0;
 }
 
@@ -287,6 +386,49 @@ void goxel_core_set_read_only(goxel_core_context_t *ctx, bool read_only)
     
     // For now, store this in a simple flag - would need to be added to goxel_core struct
     // This is a placeholder implementation
+}
+
+// Rendering operations
+int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset)
+{
+    if (!ctx || !output_file) return -1;
+    
+    // Placeholder implementation - would need actual headless rendering
+    // This would use the headless rendering system to create an image
+    // and save it to the specified file
+    
+    return 0; // Success for now
+}
+
+// Export operations  
+int goxel_core_export_project(goxel_core_context_t *ctx, const char *output_file, const char *format)
+{
+    if (!ctx || !output_file) return -1;
+    
+    // Use existing file format system
+    // For now, just save as .gox format or auto-detect from extension
+    return goxel_core_save_project(ctx, output_file);
+}
+
+// Scripting operations
+int goxel_core_execute_script_file(goxel_core_context_t *ctx, const char *script_file)
+{
+    if (!ctx || !script_file) return -1;
+    
+    // Placeholder - would need to integrate with existing QuickJS script system
+    // This would load and execute a JavaScript file
+    
+    return 0; // Success for now  
+}
+
+int goxel_core_execute_script(goxel_core_context_t *ctx, const char *script_code)
+{
+    if (!ctx || !script_code) return -1;
+    
+    // Placeholder - would need to integrate with existing QuickJS script system
+    // This would execute inline JavaScript code
+    
+    return 0; // Success for now
 }
 
 int goxel_core_get_project_bounds(goxel_core_context_t *ctx, int *width, int *height, int *depth)

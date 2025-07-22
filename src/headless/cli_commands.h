@@ -36,10 +36,14 @@ cli_result_t cmd_layer_merge(cli_context_t *ctx, cli_args_t *args);
 cli_result_t cmd_layer_visibility(cli_context_t *ctx, cli_args_t *args);
 cli_result_t cmd_layer_rename(cli_context_t *ctx, cli_args_t *args);
 
+// Rendering commands
 cli_result_t cmd_render(cli_context_t *ctx, cli_args_t *args);
+
+// Export/import commands  
 cli_result_t cmd_export(cli_context_t *ctx, cli_args_t *args);
 cli_result_t cmd_convert(cli_context_t *ctx, cli_args_t *args);
 
+// Scripting commands
 cli_result_t cmd_script(cli_context_t *ctx, cli_args_t *args);
 
 cli_result_t register_project_commands(cli_context_t *ctx);
