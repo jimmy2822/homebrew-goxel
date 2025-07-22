@@ -123,15 +123,36 @@ if env['headless'] or env['cli_tools']:
 
 # Include remaining src files (excluding core/, gui/, headless/ subdirs)
 other_sources = []
+
+# Files with GUI dependencies that should be excluded for CLI builds
+gui_dependent_files = [
+    'gui.cpp', 'imgui.cpp', 'main.c',  # Original exclusions
+    'goxel.c',  # Contains GUI-specific code
+    'tools.c',  # Contains GUI tool interfaces
+    'filters.c',  # Contains GUI filter interfaces
+]
+
+# Directories with GUI dependencies for CLI builds
+gui_dependent_dirs = ['tools', 'filters', 'formats']
+
 for root, dirnames, filenames in os.walk('src'):
     # Skip subdirectories we handle separately
     if 'core' in root or 'gui' in root or 'headless' in root:
         continue
+    
     for filename in filenames:
         if filename.endswith('.c') or filename.endswith('.cpp'):
-            # Skip GUI-specific files for headless build
+            # For CLI/headless builds, exclude GUI-dependent files and directories
             if env['headless'] or env['cli_tools']:
-                if filename in ['gui.cpp', 'imgui.cpp', 'main.c']:
+                if filename in gui_dependent_files:
+                    continue
+                # Check if file is in GUI-dependent directory
+                skip_file = False
+                for gui_dir in gui_dependent_dirs:
+                    if gui_dir in root:
+                        skip_file = True
+                        break
+                if skip_file:
                     continue
             other_sources.append(os.path.join(root, filename))
 
