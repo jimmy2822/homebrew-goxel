@@ -65,18 +65,18 @@ This document tracks the implementation of the Goxel Headless Fork as outlined i
 ## Phase 2: Headless Rendering (2-3 weeks)
 
 ### 2.1 Offscreen Rendering Setup
-- [ ] Research and choose rendering backend (OSMesa vs EGL)
-- [ ] Implement `src/headless/render_headless.c`
-- [ ] Create headless OpenGL context
-- [ ] Set up framebuffer objects for offscreen rendering
-- [ ] Initialize OpenGL state for headless operation
+- [x] Research and choose rendering backend (OSMesa vs EGL)
+- [x] Implement `src/headless/render_headless.c`
+- [x] Create headless OpenGL context
+- [x] Set up framebuffer objects for offscreen rendering
+- [x] Initialize OpenGL state for headless operation
 
 ### 2.2 OSMesa Integration (Primary Option)
-- [ ] Add OSMesa dependency to build system
-- [ ] Implement `headless_render_init()` function
-- [ ] Implement `headless_render_create_context()` function
-- [ ] Set up RGBA buffer allocation
-- [ ] Configure viewport and OpenGL state
+- [x] Add OSMesa dependency to build system (configured in SConstruct)
+- [x] Implement `headless_render_init()` function
+- [x] Implement `headless_render_create_context()` function
+- [x] Set up RGBA buffer allocation
+- [x] Configure viewport and OpenGL state
 
 ### 2.3 EGL Integration (Alternative/Fallback)
 - [ ] Add EGL dependency for hardware acceleration

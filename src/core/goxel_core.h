@@ -27,6 +27,9 @@
 #   define NOMINMAX
 #endif
 
+// Forward declarations
+typedef struct goxel_core goxel_core_t;
+
 // Core data structures
 #include "volume.h"
 #include "volume_utils.h"
@@ -36,7 +39,6 @@
 #include "shape.h"
 #include "palette.h"
 #include "file_format.h"
-#include "project_mgmt.h"
 
 // Utility functions
 #include "utils/box.h"
@@ -60,7 +62,7 @@
 #define GOXEL_VERSION_STR "0.15.2"
 
 // Core context structure for headless operation
-typedef struct {
+struct goxel_core {
     // Active image
     image_t *image;
     
@@ -80,7 +82,7 @@ typedef struct {
     // File history
     char recent_files[8][1024];
     
-} goxel_core_t;
+};
 
 // Core initialization and management
 int goxel_core_init(goxel_core_t *ctx);
@@ -101,5 +103,8 @@ int goxel_core_get_voxel(goxel_core_t *ctx, int x, int y, int z, uint8_t rgba[4]
 int goxel_core_create_layer(goxel_core_t *ctx, const char *name);
 int goxel_core_delete_layer(goxel_core_t *ctx, int layer_id);
 int goxel_core_set_active_layer(goxel_core_t *ctx, int layer_id);
+
+// Include project management functions after core type is defined
+#include "project_mgmt.h"
 
 #endif // GOXEL_CORE_H

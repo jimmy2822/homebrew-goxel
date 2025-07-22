@@ -19,7 +19,10 @@
 #ifndef PROJECT_MGMT_H
 #define PROJECT_MGMT_H
 
-#include "goxel_core.h"
+#include <stddef.h>
+
+// Forward declaration
+typedef struct goxel_core goxel_core_t;
 
 // Project metadata structure
 typedef struct {

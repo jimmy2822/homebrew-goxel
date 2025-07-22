@@ -16,12 +16,14 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "goxel_core.h"
 #include "project_mgmt.h"
 #include "utils/path.h"
 #include <time.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
+#include <stdio.h>
 
 static void get_current_timestamp(char *buffer, size_t buffer_size)
 {
