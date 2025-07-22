@@ -126,6 +126,25 @@ if (condition) {
 - **CI**: GitHub Actions builds for Linux, Windows, macOS
 - **Git commits**: Do not include watermarks or co-authored-by lines when committing
 
+### Development Methodology
+- **Test-Driven Development (TDD)**: This project adopts TDD as the primary development approach
+- **TDD Cycle**: Follow the Red-Green-Refactor cycle:
+  1. **Red**: Write failing test first
+  2. **Green**: Implement minimal code to make test pass
+  3. **Refactor**: Improve code while keeping tests green
+- **Clean Code**: Maintain high code quality following Clean Code principles
+- **SOLID Principles**: Adhere to object-oriented SOLID principles:
+  - **S**ingle Responsibility Principle
+  - **O**pen/Closed Principle  
+  - **L**iskov Substitution Principle
+  - **I**nterface Segregation Principle
+  - **D**ependency Inversion Principle
+- **Task Order Execution**: When implementing features, ALWAYS follow the task sequence defined in the implementation plan
+  - Refer to `/Users/jimmy/jimmy_side_projects/goxel/tasks/v13-implementation-plan.md` for proper task order
+  - Complete Phase 1 tasks before moving to Phase 2
+  - Mark tasks as completed in order using checkboxes
+  - Do not skip ahead to later phases without completing prerequisites
+
 ## Build System
 
 ### Primary Commands
@@ -236,3 +255,33 @@ Goxel includes JavaScript scripting via QuickJS:
 - **Mesh optimization**: Uses meshoptimizer library for efficient geometry
 
 This codebase is well-structured with clear separation of concerns, comprehensive documentation, and a mature build system supporting multiple platforms.
+
+## External Documentation Index
+
+### Goxel MCP v13 Documentation
+When working on headless/MCP integration features, refer to these external documents:
+
+- **Design Document**: `/Users/jimmy/jimmy_side_projects/goxel-mcp/docs/v13/goxel-headless-fork-design.md`
+  - Complete architecture design for headless Goxel fork
+  - CLI interface specifications
+  - C API bridge design
+  - MCP integration strategy
+  - Performance targets and success criteria
+
+- **Implementation Plan**: `/Users/jimmy/jimmy_side_projects/goxel/tasks/v13-implementation-plan.md`
+  - Detailed task breakdown (139 trackable tasks)
+  - 6-phase implementation roadmap
+  - Milestone schedule and progress tracking
+  - Success criteria validation checklist
+
+### Related MCP Documentation
+- **Goxel MCP Server**: Located in `/Users/jimmy/jimmy_side_projects/goxel-mcp/`
+  - Current MCP server implementation
+  - Tool definitions and capabilities
+  - Integration patterns and examples
+
+### Usage Notes
+- Consult design document when making architectural decisions
+- Use implementation plan to track progress and validate completeness
+- Reference existing MCP server when designing headless integration
+- Ensure compatibility with v13 specifications when implementing new features
