@@ -40,16 +40,9 @@ typedef struct goxel_core goxel_core_t;
 #include "palette.h"
 #include "file_format.h"
 
-// Utility functions
-#include "utils/box.h"
-#include "utils/cache.h"
-#include "utils/color.h"
-#include "utils/geometry.h"
-#include "utils/img.h"
-#include "utils/path.h"
-#include "utils/plane.h"
-#include "utils/vec.h"
-#include "utils/json.h"
+// Forward declarations for utility functions
+typedef struct vec4 vec4_t;
+typedef struct mat4 mat4_t;
 
 // Standard includes
 #include <float.h>
@@ -62,6 +55,8 @@ typedef struct goxel_core goxel_core_t;
 #define GOXEL_VERSION_STR "0.15.2"
 
 // Core context structure for headless operation
+typedef struct goxel_core goxel_core_context_t;
+
 struct goxel_core {
     // Active image
     image_t *image;
@@ -84,25 +79,36 @@ struct goxel_core {
     
 };
 
+// Core context management
+goxel_core_context_t *goxel_core_create_context(void);
+void goxel_core_destroy_context(goxel_core_context_t *ctx);
+
 // Core initialization and management
-int goxel_core_init(goxel_core_t *ctx);
-void goxel_core_shutdown(goxel_core_t *ctx);
-void goxel_core_reset(goxel_core_t *ctx);
+int goxel_core_init(goxel_core_context_t *ctx);
+void goxel_core_shutdown(goxel_core_context_t *ctx);
+void goxel_core_reset(goxel_core_context_t *ctx);
 
 // Project management
-int goxel_core_create_project(goxel_core_t *ctx, const char *name);
-int goxel_core_load_project(goxel_core_t *ctx, const char *path);
-int goxel_core_save_project(goxel_core_t *ctx, const char *path);
+int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int width, int height, int depth);
+int goxel_core_load_project(goxel_core_context_t *ctx, const char *path);
+int goxel_core_save_project(goxel_core_context_t *ctx, const char *path);
+int goxel_core_save_project_format(goxel_core_context_t *ctx, const char *path, const char *format);
+int goxel_core_create_backup(goxel_core_context_t *ctx, const char *path);
+void goxel_core_set_read_only(goxel_core_context_t *ctx, bool read_only);
+int goxel_core_get_project_bounds(goxel_core_context_t *ctx, int *width, int *height, int *depth);
 
 // Volume operations
-int goxel_core_add_voxel(goxel_core_t *ctx, int x, int y, int z, uint8_t rgba[4]);
-int goxel_core_remove_voxel(goxel_core_t *ctx, int x, int y, int z);
-int goxel_core_get_voxel(goxel_core_t *ctx, int x, int y, int z, uint8_t rgba[4]);
+int goxel_core_add_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4], int layer_id);
+int goxel_core_remove_voxel(goxel_core_context_t *ctx, int x, int y, int z, int layer_id);
+int goxel_core_remove_voxels_in_box(goxel_core_context_t *ctx, int x1, int y1, int z1, int x2, int y2, int z2, int layer_id);
+int goxel_core_paint_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4], int layer_id);
+int goxel_core_get_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4]);
 
 // Layer operations
-int goxel_core_create_layer(goxel_core_t *ctx, const char *name);
-int goxel_core_delete_layer(goxel_core_t *ctx, int layer_id);
-int goxel_core_set_active_layer(goxel_core_t *ctx, int layer_id);
+int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name);
+int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id);
+int goxel_core_set_active_layer(goxel_core_context_t *ctx, int layer_id);
+int goxel_core_get_layer_count(goxel_core_context_t *ctx);
 
 // Include project management functions after core type is defined
 #include "project_mgmt.h"

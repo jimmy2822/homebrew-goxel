@@ -21,8 +21,7 @@
 
 #include <stddef.h>
 
-// Forward declaration
-typedef struct goxel_core goxel_core_t;
+// Forward declaration - use existing typedef from goxel_core.h
 
 // Project metadata structure
 typedef struct {

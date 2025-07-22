@@ -130,7 +130,7 @@ for root, dirnames, filenames in os.walk('src'):
     for filename in filenames:
         if filename.endswith('.c') or filename.endswith('.cpp'):
             # Skip GUI-specific files for headless build
-            if env['headless']:
+            if env['headless'] or env['cli_tools']:
                 if filename in ['gui.cpp', 'imgui.cpp', 'main.c']:
                     continue
             other_sources.append(os.path.join(root, filename))
@@ -140,6 +140,14 @@ if not env['headless']:
     sources += gui_sources
 if env['headless'] or env['cli_tools']:
     sources += headless_sources
+
+# Use CLI main for CLI tools build
+if env['cli_tools'] and not env['headless']:
+    # For CLI tools, use the CLI main entry point
+    cli_main = 'src/headless/main_cli.c'
+    if cli_main in sources:
+        sources.remove(cli_main)
+    sources.append(cli_main)
 
 # Check for libpng.
 if conf.CheckLibWithHeader('libpng', 'png.h', 'c'):
