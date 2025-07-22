@@ -131,4 +131,61 @@ bool headless_render_is_initialized(void);
 OSMesaContext headless_render_create_context(void);
 #endif
 
+/*
+ * High-level rendering functions that integrate with Goxel's rendering system
+ */
+
+// Forward declarations for Goxel types
+typedef struct image image_t;
+typedef struct camera camera_t;
+typedef struct layer layer_t;
+typedef struct volume volume_t;
+typedef struct material material_t;
+
+/*
+ * Function: headless_render_scene_with_camera
+ * Render a complete Goxel scene with camera setup.
+ *
+ * Parameters:
+ *   image - Goxel image containing layers to render
+ *   camera - Camera for viewing transformation
+ *   background_color - Background color RGBA (can be NULL for default gray)
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+int headless_render_scene_with_camera(const image_t *image, const camera_t *camera,
+                                    const uint8_t background_color[4]);
+
+/*
+ * Function: headless_render_layers
+ * Render a specific set of layers.
+ *
+ * Parameters:
+ *   layers - Linked list of layers to render
+ *   camera - Camera for viewing transformation
+ *   background_color - Background color RGBA (can be NULL for default gray)
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+int headless_render_layers(const layer_t *layers, const camera_t *camera,
+                          const uint8_t background_color[4]);
+
+/*
+ * Function: headless_render_volume_direct
+ * Render a single volume directly.
+ *
+ * Parameters:
+ *   volume - Volume to render
+ *   camera - Camera for viewing transformation
+ *   material - Material properties (can be NULL for default)
+ *   background_color - Background color RGBA (can be NULL for default gray)
+ *
+ * Returns:
+ *   0 on success, -1 on error
+ */
+int headless_render_volume_direct(const volume_t *volume, const camera_t *camera,
+                                 const material_t *material, const uint8_t background_color[4]);
+
 #endif // RENDER_HEADLESS_H

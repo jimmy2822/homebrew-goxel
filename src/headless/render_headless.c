@@ -16,10 +16,20 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "goxel.h"
 #include "render_headless.h"
 
 #ifdef OSMESA_RENDERING
+#ifdef __APPLE__
+// OSMesa may not be available on macOS - use fallback
+#include <OpenGL/gl.h>
+typedef void* OSMesaContext;
+static OSMesaContext OSMesaCreateContext(int format, OSMesaContext sharelist) { return NULL; }
+static void OSMesaDestroyContext(OSMesaContext ctx) {}
+static int OSMesaMakeCurrent(OSMesaContext ctx, void *buffer, int type, int width, int height) { return 0; }
+#else
 #include <GL/osmesa.h>
+#endif
 #endif
 
 #ifdef EGL_RENDERING
@@ -78,8 +88,8 @@ int headless_render_init(int width, int height)
     }
 
     // Create OSMesa context for RGBA rendering
-    g_headless_ctx.context = OSMesaCreateContext(OSMESA_RGBA, NULL);
-    if (!g_headless_ctx.context) {
+    g_headless_ctx.osmesa_context = OSMesaCreateContext(OSMESA_RGBA, NULL);
+    if (!g_headless_ctx.osmesa_context) {
         LOG_E("Failed to create OSMesa context");
         return -1;
     }
@@ -98,13 +108,13 @@ int headless_render_init(int width, int height)
     }
 
     // Make the context current
-    if (!OSMesaMakeCurrent(g_headless_ctx.context, 
+    if (!OSMesaMakeCurrent(g_headless_ctx.osmesa_context, 
                           g_headless_ctx.buffer,
                           GL_UNSIGNED_BYTE,
                           width, height)) {
         LOG_E("Failed to make OSMesa context current");
         free(g_headless_ctx.buffer);
-        OSMesaDestroyContext(g_headless_ctx.context);
+        OSMesaDestroyContext(g_headless_ctx.osmesa_context);
         return -1;
     }
 
@@ -142,9 +152,9 @@ void headless_render_shutdown(void)
     }
 
 #ifdef OSMESA_RENDERING
-    if (g_headless_ctx.context) {
-        OSMesaDestroyContext(g_headless_ctx.context);
-        g_headless_ctx.context = NULL;
+    if (g_headless_ctx.osmesa_context) {
+        OSMesaDestroyContext(g_headless_ctx.osmesa_context);
+        g_headless_ctx.osmesa_context = NULL;
     }
 #endif
 
@@ -182,7 +192,7 @@ int headless_render_resize(int width, int height)
     g_headless_ctx.height = height;
 
     // Make context current with new buffer size
-    if (!OSMesaMakeCurrent(g_headless_ctx.context,
+    if (!OSMesaMakeCurrent(g_headless_ctx.osmesa_context,
                           g_headless_ctx.buffer,
                           GL_UNSIGNED_BYTE,
                           width, height)) {
@@ -235,17 +245,41 @@ int headless_render_to_file(const char *filename, const char *format)
         return -1;
     }
 
-    // For now, assume PNG format
-    // The actual image saving will be implemented using the existing img utilities
-    LOG_I("Saving rendered image to: %s (format: %s)", 
-          filename, format ? format : "png");
-
-    // TODO: Implement actual image saving using img_save or similar
-    // This would need to flip the Y coordinates since OpenGL and image formats
-    // typically have different Y-axis orientations
+    // Use Goxel's image utilities to save the framebuffer
+    uint8_t *flipped_buffer = NULL;
+    int w = g_headless_ctx.width;
+    int h = g_headless_ctx.height;
+    int bpp = g_headless_ctx.bpp;
     
+    // OpenGL renders with Y-axis flipped compared to image formats
+    // Create a flipped copy of the buffer
+    flipped_buffer = malloc(w * h * bpp);
+    if (!flipped_buffer) {
+        LOG_E("Failed to allocate buffer for image saving");
+        return -1;
+    }
+    
+    uint8_t *src = (uint8_t*)g_headless_ctx.buffer;
+    for (int y = 0; y < h; y++) {
+        memcpy(flipped_buffer + y * w * bpp, 
+               src + (h - 1 - y) * w * bpp, 
+               w * bpp);
+    }
+    
+    // Use Goxel's img_save function
+    int result = img_save(flipped_buffer, w, h, bpp, filename);
+    
+    free(flipped_buffer);
+    
+    if (result) {
+        LOG_E("Failed to save image to: %s", filename);
+        return -1;
+    }
+    
+    LOG_I("Successfully saved rendered image to: %s", filename);
     return 0;
 #else
+    LOG_E("OSMesa not available - cannot save to file");
     return -1;
 #endif
 }
@@ -274,3 +308,165 @@ OSMesaContext headless_render_create_context(void)
     return OSMesaCreateContext(OSMESA_RGBA, NULL);
 }
 #endif
+
+/*
+ * High-level rendering functions that integrate with Goxel's rendering system
+ */
+
+int headless_render_scene_with_camera(const image_t *image, const camera_t *camera,
+                                    const uint8_t background_color[4])
+{
+    if (!g_headless_ctx.initialized) {
+        LOG_E("Headless render not initialized");
+        return -1;
+    }
+
+    if (!image || !camera) {
+        LOG_E("Invalid image or camera");
+        return -1;
+    }
+
+    // Prepare headless rendering setup
+    if (headless_render_scene() != 0) {
+        return -1;
+    }
+
+    // Set up viewport
+    float viewport[4] = {0, 0, g_headless_ctx.width, g_headless_ctx.height};
+
+    // Create renderer
+    renderer_t rend = goxel.rend;
+    rend.view_mat[0][0] = 1; // Initialize view matrix
+    rend.fbo = 0; // Use default framebuffer
+    rend.scale = 1.0;
+    rend.items = NULL;
+
+    // Set camera matrices
+    camera_t *cam = (camera_t*)camera; // Remove const for camera_update
+    cam->aspect = (float)g_headless_ctx.width / g_headless_ctx.height;
+    camera_update(cam);
+    
+    mat4_copy(cam->view_mat, rend.view_mat);
+    mat4_copy(cam->proj_mat, rend.proj_mat);
+
+    // Render all visible layers
+    const layer_t *layer;
+    for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
+        if (layer->visible && layer->volume) {
+            render_volume(&rend, layer->volume, layer->material, 0);
+        }
+    }
+
+    // Submit the rendering
+    uint8_t clear_color[4] = {128, 128, 128, 255}; // Default gray background
+    if (background_color) {
+        memcpy(clear_color, background_color, 4);
+    }
+    
+    render_submit(&rend, viewport, clear_color);
+
+    return 0;
+}
+
+int headless_render_layers(const layer_t *layers, const camera_t *camera,
+                          const uint8_t background_color[4])
+{
+    if (!g_headless_ctx.initialized) {
+        LOG_E("Headless render not initialized");
+        return -1;
+    }
+
+    if (!layers || !camera) {
+        LOG_E("Invalid layers or camera");
+        return -1;
+    }
+
+    // Prepare headless rendering setup
+    if (headless_render_scene() != 0) {
+        return -1;
+    }
+
+    // Set up viewport
+    float viewport[4] = {0, 0, g_headless_ctx.width, g_headless_ctx.height};
+
+    // Create renderer
+    renderer_t rend = goxel.rend;
+    rend.fbo = 0;
+    rend.scale = 1.0;
+    rend.items = NULL;
+
+    // Set camera matrices
+    camera_t *cam = (camera_t*)camera;
+    cam->aspect = (float)g_headless_ctx.width / g_headless_ctx.height;
+    camera_update(cam);
+    
+    mat4_copy(cam->view_mat, rend.view_mat);
+    mat4_copy(cam->proj_mat, rend.proj_mat);
+
+    // Render specified layers
+    const layer_t *layer;
+    for (layer = layers; layer; layer = layer->next) {
+        if (layer->visible && layer->volume) {
+            render_volume(&rend, layer->volume, layer->material, 0);
+        }
+    }
+
+    // Submit the rendering
+    uint8_t clear_color[4] = {128, 128, 128, 255};
+    if (background_color) {
+        memcpy(clear_color, background_color, 4);
+    }
+    
+    render_submit(&rend, viewport, clear_color);
+
+    return 0;
+}
+
+int headless_render_volume_direct(const volume_t *volume, const camera_t *camera,
+                                 const material_t *material, const uint8_t background_color[4])
+{
+    if (!g_headless_ctx.initialized) {
+        LOG_E("Headless render not initialized");
+        return -1;
+    }
+
+    if (!volume || !camera) {
+        LOG_E("Invalid volume or camera");
+        return -1;
+    }
+
+    // Prepare headless rendering setup
+    if (headless_render_scene() != 0) {
+        return -1;
+    }
+
+    // Set up viewport
+    float viewport[4] = {0, 0, g_headless_ctx.width, g_headless_ctx.height};
+
+    // Create renderer
+    renderer_t rend = goxel.rend;
+    rend.fbo = 0;
+    rend.scale = 1.0;
+    rend.items = NULL;
+
+    // Set camera matrices
+    camera_t *cam = (camera_t*)camera;
+    cam->aspect = (float)g_headless_ctx.width / g_headless_ctx.height;
+    camera_update(cam);
+    
+    mat4_copy(cam->view_mat, rend.view_mat);
+    mat4_copy(cam->proj_mat, rend.proj_mat);
+
+    // Render the volume
+    render_volume(&rend, volume, material, 0);
+
+    // Submit the rendering
+    uint8_t clear_color[4] = {128, 128, 128, 255};
+    if (background_color) {
+        memcpy(clear_color, background_color, 4);
+    }
+    
+    render_submit(&rend, viewport, clear_color);
+
+    return 0;
+}
