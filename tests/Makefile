@@ -44,12 +44,13 @@ HEADLESS_SOURCES = \
     ../src/headless/cli_commands.c
 
 # Test executables
-TESTS = test_core test_rendering test_cli test_formats test_memory_perf test_e2e_integration
+TESTS = test_core test_rendering test_cli test_formats test_memory_perf test_e2e_integration test_cli_execution
 
 # Test sources
 TEST_CORE_SOURCES = core/test_goxel_core.c
 TEST_RENDERING_SOURCES = core/test_headless_rendering.c
 TEST_CLI_SOURCES = core/test_cli_interface.c
+TEST_CLI_EXECUTION_SOURCES = core/test_cli_commands_execution.c
 TEST_FORMATS_SOURCES = core/test_file_formats.c
 TEST_MEMORY_PERF_SOURCES = core/test_memory_perf.c
 TEST_E2E_SOURCES = integration/test_e2e_headless.c
@@ -65,6 +66,9 @@ test_rendering: $(TEST_RENDERING_SOURCES) $(CORE_SOURCES) $(HEADLESS_SOURCES) $(
 
 test_cli: $(TEST_CLI_SOURCES) $(CORE_SOURCES) $(HEADLESS_SOURCES) $(EXT_SOURCES)
 	$(CC) $(CFLAGS) -o $@ $(TEST_CLI_SOURCES) $(CORE_SOURCES) $(HEADLESS_SOURCES) $(EXT_SOURCES) $(LIBS)
+
+test_cli_execution: $(TEST_CLI_EXECUTION_SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(TEST_CLI_EXECUTION_SOURCES) $(LIBS)
 
 test_formats: $(TEST_FORMATS_SOURCES) $(CORE_SOURCES) $(EXT_SOURCES)
 	$(CC) $(CFLAGS) -o $@ $(TEST_FORMATS_SOURCES) $(CORE_SOURCES) $(EXT_SOURCES) $(LIBS)
@@ -94,6 +98,10 @@ run-cli: test_cli
 	@echo "Running CLI Interface Tests..."
 	@./test_cli
 
+run-cli-execution: test_cli_execution
+	@echo "Running CLI Command Execution Tests..."
+	@./test_cli_execution
+
 run-formats: test_formats
 	@echo "Running File Format Tests..."
 	@./test_formats
@@ -116,6 +124,8 @@ run-all: $(TESTS)
 	@$(MAKE) run-rendering
 	@echo ""
 	@$(MAKE) run-cli
+	@echo ""
+	@$(MAKE) run-cli-execution
 	@echo ""
 	@$(MAKE) run-formats
 	@echo ""
