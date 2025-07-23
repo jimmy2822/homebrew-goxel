@@ -36,11 +36,17 @@ const tool_t *tool_get(int id)
 // Minimal render function for headless mode  
 void goxel_render_to_buf(uint8_t *buf, int w, int h, int bpp)
 {
-    // In headless mode, create empty buffer
-    (void)buf;
-    (void)w;
-    (void)h;
-    (void)bpp;
+    // In headless mode, create a simple gray background to avoid NULL preview
+    if (!buf) return;
+    
+    for (int i = 0; i < w * h * bpp; i += bpp) {
+        buf[i + 0] = 128;  // R
+        buf[i + 1] = 128;  // G  
+        buf[i + 2] = 128;  // B
+        if (bpp == 4) {
+            buf[i + 3] = 255;  // A
+        }
+    }
 }
 
 // Minimal GUI functions for headless mode (no-ops)

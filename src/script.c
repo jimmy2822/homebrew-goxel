@@ -783,7 +783,49 @@ static JSValue attr_getter(JSContext *ctx, JSValueConst this_val, int magic)
 static JSValue attr_setter(JSContext *ctx, JSValueConst this_val,
                            JSValueConst val, int magic)
 {
-    // Not implemented yet.
+    JSValue proto;
+    const klass_t *klass;
+    void *this, *ptr;
+    const attribute_t *attr;
+
+    proto = JS_GetPrototype(ctx, this_val);
+    klass = JS_GetOpaque(proto, 1);
+    if (!klass) {
+        JS_FreeValue(ctx, proto);
+        return JS_EXCEPTION;
+    }
+    
+    this = JS_GetOpaque(this_val, klass->id);
+    JS_FreeValue(ctx, proto);
+    
+    if (!this) {
+        LOG_E("No object instance found for class %s", klass->def.class_name);
+        return JS_EXCEPTION;
+    }
+    
+    attr = &klass->attributes[magic];
+    
+    // Handle object references
+    if (attr->klass && attr->member.size) {
+        ptr = JS_GetOpaque(val, attr->klass->id);
+        if (!ptr && !JS_IsNull(val)) {
+            LOG_E("Invalid value type for attribute %s", attr->name);
+            return JS_EXCEPTION;
+        }
+        *(void**)((char*)this + attr->member.offset) = ptr;
+        return JS_UNDEFINED;
+    }
+
+    // Handle primitive values embedded in the object
+    if (attr->klass && attr->klass->ctor_from_ptr && attr->member.size) {
+        ptr = (char*)this + attr->member.offset;
+        // For now, we can't handle direct value assignment to embedded objects
+        // This would require type-specific conversion logic
+        LOG_E("Direct assignment to embedded attribute %s not supported", attr->name);
+        return JS_EXCEPTION;
+    }
+
+    LOG_E("No attribute setter handler found for %s", attr->name);
     return JS_EXCEPTION;
 }
 

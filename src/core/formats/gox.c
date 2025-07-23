@@ -263,7 +263,7 @@ void save_to_file(const image_t *img, const char *path)
     int nb_blocks, index, size, bpos[3], material_idx;
     uint64_t uid;
     FILE *out;
-    uint8_t *png, *preview;
+    uint8_t *png; // *preview;
     camera_t *camera;
     material_t *material;
     volume_iterator_t iter;
@@ -283,12 +283,13 @@ void save_to_file(const image_t *img, const char *path)
         chunk_write_dict_value(&c, out, "box", &img->box, sizeof(img->box));
     chunk_write_finish(&c, out);
 
-    preview = calloc(128 * 128, 4);
-    goxel_render_to_buf(preview, 128, 128, 4);
-    png = img_write_to_mem(preview, 128, 128, 4, &size);
-    chunk_write_all(out, "PREV", (char*)png, size);
-    free(preview);
-    free(png);
+    // Skip preview generation in headless mode to avoid potential issues
+    // preview = calloc(128 * 128, 4);
+    // goxel_render_to_buf(preview, 128, 128, 4);
+    // png = img_write_to_mem(preview, 128, 128, 4, &size);
+    // chunk_write_all(out, "PREV", (char*)png, size);
+    // free(preview);
+    // free(png);
 
     // Add all the blocks data into the hash table.
     index = 0;
