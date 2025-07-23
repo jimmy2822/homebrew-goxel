@@ -83,6 +83,9 @@ cli_result_t cli_register_command(cli_context_t *ctx, const char *name,
     cmd->next = ctx->commands;
     ctx->commands = cmd;
     
+    // Automatically add help option to every command
+    cli_add_option(ctx, name, "h", "help", "Show help for this command", CLI_OPT_FLAG, false);
+    
     return CLI_SUCCESS;
 }
 
@@ -259,6 +262,15 @@ cli_result_t cli_parse_args(cli_context_t *ctx, int argc, char **argv, cli_args_
                 cli_free_args(*args);
                 *args = NULL;
                 return CLI_ERROR_INVALID_ARGS;
+            }
+            
+            // Check if this is a help request
+            if ((opt_def->long_name && strcmp(opt_def->long_name, "help") == 0) ||
+                (opt_def->short_name && strcmp(opt_def->short_name, "h") == 0)) {
+                cli_print_command_help(ctx, command_name);
+                cli_free_args(*args);
+                *args = NULL;
+                return CLI_SUCCESS;
             }
             
             cli_parsed_option_t *parsed_opt = add_parsed_option(*args, 
@@ -464,8 +476,11 @@ cli_result_t cli_run(cli_context_t *ctx, int argc, char **argv)
     
     const char *command_name = argv[1];
     
-    printf("DEBUG: About to parse command '%s'...\n", command_name);
-    fflush(stdout);
+    // Check if user is requesting help for a specific command
+    if (argc >= 3 && (strcmp(argv[2], "--help") == 0 || strcmp(argv[2], "-h") == 0)) {
+        cli_print_command_help(ctx, command_name);
+        return CLI_SUCCESS;
+    }
     
     cli_args_t *args;
     cli_result_t result = cli_parse_args(ctx, argc, argv, &args);
@@ -473,13 +488,7 @@ cli_result_t cli_run(cli_context_t *ctx, int argc, char **argv)
         return result;
     }
     
-    printf("DEBUG: Command parsing completed, about to execute...\n");
-    fflush(stdout);
-    
     result = cli_execute_command(ctx, command_name, args);
-    
-    printf("DEBUG: Command execution completed with result: %d\n", result);
-    fflush(stdout);
     
     cli_free_args(args);
     return result;
@@ -505,7 +514,8 @@ void cli_print_help(cli_context_t *ctx)
         cmd = cmd->next;
     }
     
-    printf("\nUse '%s COMMAND --help' for more information about a specific command.\n", ctx->program_name);
+    printf("\nUse '%s COMMAND --help' for detailed information about each command.\n", ctx->program_name);
+    printf("All commands support -h, --help options for usage information.\n");
 }
 
 void cli_print_command_help(cli_context_t *ctx, const char *command_name)

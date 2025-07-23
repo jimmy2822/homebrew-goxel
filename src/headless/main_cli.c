@@ -107,21 +107,12 @@ int main(int argc, char **argv)
         return 1;
     }
     
-    printf("DEBUG: About to initialize Goxel context...\n");
-    fflush(stdout);
-    
     if (initialize_goxel_context() != 0) {
         cli_destroy_context(g_cli_context);
         return 1;
     }
     
-    printf("DEBUG: Goxel context initialized successfully\n");
-    fflush(stdout);
-    
     cli_set_goxel_context(g_cli_context, g_goxel_context);
-    
-    printf("DEBUG: CLI context set up\n");
-    fflush(stdout);
     
     if (register_all_commands(g_cli_context) != 0) {
         cleanup_goxel_context();
@@ -170,13 +161,7 @@ int main(int argc, char **argv)
     
     optind = 0;
     
-    printf("DEBUG: About to call cli_run() with command processing...\n");
-    fflush(stdout);
-    
     cli_result_t result = cli_run(g_cli_context, argc, argv);
-    
-    printf("DEBUG: cli_run() completed with result: %d\n", result);
-    fflush(stdout);
     if (result != CLI_SUCCESS) {
         if (!quiet) {
             fprintf(stderr, "Command failed: %s\n", cli_error_string(result));
