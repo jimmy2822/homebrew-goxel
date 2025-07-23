@@ -20,17 +20,14 @@
 #include "render_headless.h"
 #include "core/utils/img.h"
 
-#ifdef OSMESA_RENDERING
-#ifdef __APPLE__
-// OSMesa may not be available on macOS - use fallback
-#include <OpenGL/gl.h>
-typedef void* OSMesaContext;
-static OSMesaContext OSMesaCreateContext(int format, OSMesaContext sharelist) { return NULL; }
-static void OSMesaDestroyContext(OSMesaContext ctx) {}
-static int OSMesaMakeCurrent(OSMesaContext ctx, void *buffer, int type, int width, int height) { return 0; }
-#else
+#ifdef HAVE_OSMESA
 #include <GL/osmesa.h>
 #endif
+
+#ifdef HEADLESS_SOFTWARE_FALLBACK
+// Software fallback when OSMesa is not available
+#include <OpenGL/gl.h>
+typedef void* OSMesaContext;
 #endif
 
 #ifdef EGL_RENDERING
@@ -62,7 +59,7 @@ static int OSMesaMakeCurrent(OSMesaContext ctx, void *buffer, int type, int widt
 #endif
 
 typedef struct {
-#ifdef OSMESA_RENDERING
+#ifdef HAVE_OSMESA
     OSMesaContext osmesa_context;
 #endif
 #ifdef EGL_RENDERING
@@ -76,24 +73,16 @@ typedef struct {
     int height;
     int bpp;           // bytes per pixel (typically 4 for RGBA)
     bool initialized;
-    int backend;       // 0 = OSMesa, 1 = EGL, 2 = fallback
+    int backend;       // 0 = OSMesa, 1 = EGL, 2 = software fallback
 } headless_context_t;
 
 static headless_context_t g_headless_ctx = {0};
 
 int headless_render_init(int width, int height)
 {
-#ifdef OSMESA_RENDERING
     if (g_headless_ctx.initialized) {
         LOG_W("Headless render already initialized");
         return 0;
-    }
-
-    // Create OSMesa context for RGBA rendering
-    g_headless_ctx.osmesa_context = OSMesaCreateContext(OSMESA_RGBA, NULL);
-    if (!g_headless_ctx.osmesa_context) {
-        LOG_E("Failed to create OSMesa context");
-        return -1;
     }
 
     g_headless_ctx.width = width;
@@ -105,51 +94,46 @@ int headless_render_init(int width, int height)
     g_headless_ctx.buffer = malloc(buffer_size);
     if (!g_headless_ctx.buffer) {
         LOG_E("Failed to allocate framebuffer (%zu bytes)", buffer_size);
-        OSMesaDestroyContext(g_headless_ctx.osmesa_context);
         return -1;
     }
 
-    // Make the context current
-    if (!OSMesaMakeCurrent(g_headless_ctx.osmesa_context, 
-                          g_headless_ctx.buffer,
-                          GL_UNSIGNED_BYTE,
-                          width, height)) {
-        LOG_E("Failed to make OSMesa context current");
-        free(g_headless_ctx.buffer);
-        OSMesaDestroyContext(g_headless_ctx.osmesa_context);
-        return -1;
+#ifdef HAVE_OSMESA
+    // Try OSMesa first
+    g_headless_ctx.osmesa_context = OSMesaCreateContext(OSMESA_RGBA, NULL);
+    if (g_headless_ctx.osmesa_context) {
+        // Make the context current
+        if (OSMesaMakeCurrent(g_headless_ctx.osmesa_context, 
+                             g_headless_ctx.buffer,
+                             GL_UNSIGNED_BYTE,
+                             width, height)) {
+            g_headless_ctx.backend = 0; // OSMesa
+            g_headless_ctx.initialized = true;
+            
+            LOG_I("Headless rendering initialized with OSMesa: %dx%d", width, height);
+            LOG_I("OSMesa version: %s", (char*)glGetString(GL_VERSION));
+            LOG_I("OSMesa renderer: %s", (char*)glGetString(GL_RENDERER));
+            return 0;
+        } else {
+            LOG_W("Failed to make OSMesa context current, falling back to software mode");
+            OSMesaDestroyContext(g_headless_ctx.osmesa_context);
+            g_headless_ctx.osmesa_context = NULL;
+        }
+    } else {
+        LOG_W("Failed to create OSMesa context, falling back to software mode");
     }
+#endif
 
+    // Software fallback mode
+    g_headless_ctx.backend = 2; // Software fallback
     g_headless_ctx.initialized = true;
-
-    LOG_I("Headless rendering initialized: %dx%d", width, height);
-    LOG_I("OSMesa version: %s", (char*)glGetString(GL_VERSION));
-    LOG_I("OSMesa renderer: %s", (char*)glGetString(GL_RENDERER));
-
+    
+    // Initialize buffer to a default color (transparent black)
+    memset(g_headless_ctx.buffer, 0, buffer_size);
+    
+    LOG_I("Headless rendering initialized (software fallback): %dx%d", width, height);
+    LOG_W("OSMesa not available - rendering will use software fallback");
+    
     return 0;
-#else
-    // For now, create a dummy buffer for testing
-    g_headless_ctx.width = width;
-    g_headless_ctx.height = height;
-    g_headless_ctx.bpp = 4;
-#ifdef OSMESA_RENDERING
-    g_headless_ctx.osmesa_context = NULL;
-#endif
-#ifdef EGL_RENDERING
-    g_headless_ctx.egl_context = NULL;
-#endif
-
-    size_t buffer_size = width * height * g_headless_ctx.bpp;
-    g_headless_ctx.buffer = malloc(buffer_size);
-    if (!g_headless_ctx.buffer) {
-        LOG_E("Failed to allocate framebuffer (%zu bytes)", buffer_size);
-        return -1;
-    }
-
-    g_headless_ctx.initialized = true;
-    LOG_I("Headless rendering initialized (fallback mode): %dx%d", width, height);
-    return 0;
-#endif
 }
 
 void headless_render_shutdown(void)
@@ -158,7 +142,7 @@ void headless_render_shutdown(void)
         return;
     }
 
-#ifdef OSMESA_RENDERING
+#ifdef HAVE_OSMESA
     if (g_headless_ctx.osmesa_context) {
         OSMesaDestroyContext(g_headless_ctx.osmesa_context);
         g_headless_ctx.osmesa_context = NULL;
@@ -176,7 +160,6 @@ void headless_render_shutdown(void)
 
 int headless_render_resize(int width, int height)
 {
-#ifdef OSMESA_RENDERING
     if (!g_headless_ctx.initialized) {
         LOG_E("Headless render not initialized");
         return -1;
@@ -198,20 +181,26 @@ int headless_render_resize(int width, int height)
     g_headless_ctx.width = width;
     g_headless_ctx.height = height;
 
-    // Make context current with new buffer size
-    if (!OSMesaMakeCurrent(g_headless_ctx.osmesa_context,
-                          g_headless_ctx.buffer,
-                          GL_UNSIGNED_BYTE,
-                          width, height)) {
-        LOG_E("Failed to resize OSMesa context");
-        return -1;
+#ifdef HAVE_OSMESA
+    if (g_headless_ctx.backend == 0 && g_headless_ctx.osmesa_context) {
+        // Make context current with new buffer size
+        if (!OSMesaMakeCurrent(g_headless_ctx.osmesa_context,
+                              g_headless_ctx.buffer,
+                              GL_UNSIGNED_BYTE,
+                              width, height)) {
+            LOG_E("Failed to resize OSMesa context");
+            return -1;
+        }
+    }
+#endif
+
+    if (g_headless_ctx.backend == 2) {
+        // Software fallback - just clear the buffer
+        memset(g_headless_ctx.buffer, 0, buffer_size);
     }
 
     LOG_I("Headless rendering resized to: %dx%d", width, height);
     return 0;
-#else
-    return -1;
-#endif
 }
 
 int headless_render_scene(void)

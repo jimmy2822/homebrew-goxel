@@ -240,7 +240,56 @@ if target_os == 'darwin':
     env.Append(LIBS=['m', 'objc'])
     # Fix warning in noc_file_dialog (the code should be fixed instead).
     env.Append(CCFLAGS=['-Wno-deprecated-declarations'])
-    env.ParseConfig('pkg-config --cflags --libs glfw3')
+    
+    # Handle headless mode for macOS
+    if env['headless']:
+        osmesa_found = False
+        
+        # Try to find OSMesa via pkg-config first
+        if conf.TryAction('pkg-config --exists osmesa')[0]:
+            env.ParseConfig('pkg-config --cflags --libs osmesa')
+            env.Append(CPPDEFINES=['OSMESA_RENDERING', 'HAVE_OSMESA'])
+            osmesa_found = True
+            print("Found OSMesa via pkg-config")
+        else:
+            # Check common homebrew locations
+            homebrew_paths = ['/opt/homebrew', '/usr/local']
+            for brew_path in homebrew_paths:
+                osmesa_lib = os.path.join(brew_path, 'lib', 'libOSMesa.dylib')
+                osmesa_include = os.path.join(brew_path, 'include', 'GL', 'osmesa.h')
+                
+                if os.path.exists(osmesa_lib) and os.path.exists(osmesa_include):
+                    env.Append(LIBPATH=[os.path.join(brew_path, 'lib')])
+                    env.Append(CPPPATH=[os.path.join(brew_path, 'include')])
+                    env.Append(LIBS=['OSMesa'])
+                    env.Append(CPPDEFINES=['OSMESA_RENDERING', 'HAVE_OSMESA'])
+                    osmesa_found = True
+                    print(f"Found OSMesa in {brew_path}")
+                    break
+            
+            # Check MacPorts location
+            if not osmesa_found:
+                macports_lib = '/opt/local/lib/libOSMesa.dylib'
+                macports_include = '/opt/local/include/GL/osmesa.h'
+                
+                if os.path.exists(macports_lib) and os.path.exists(macports_include):
+                    env.Append(LIBPATH=['/opt/local/lib'])
+                    env.Append(CPPPATH=['/opt/local/include'])
+                    env.Append(LIBS=['OSMesa'])
+                    env.Append(CPPDEFINES=['OSMESA_RENDERING', 'HAVE_OSMESA'])
+                    osmesa_found = True
+                    print("Found OSMesa in MacPorts")
+        
+        if not osmesa_found:
+            print("WARNING: OSMesa not found - headless rendering will use software fallback")
+            print("To install OSMesa on macOS:")
+            print("  Via Homebrew: brew install mesa")
+            print("  Via MacPorts: sudo port install mesa +osmesa")
+            env.Append(CPPDEFINES=['HEADLESS_SOFTWARE_FALLBACK'])
+    else:
+        # GUI mode - use regular OpenGL and GLFW
+        env.ParseConfig('pkg-config --cflags --libs glfw3')
+    
     env['sound'] = False
 
 

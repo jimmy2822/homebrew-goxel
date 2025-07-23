@@ -148,6 +148,11 @@ if (condition) {
 - **✅ Performance Optimization**: All targets exceeded (8ms startup, 5.7MB binary)
 - **✅ Cross-platform Support**: Validated on macOS ARM64, ready for other platforms
 
+### Implementation Principles
+- **No Workarounds**: Never use workarounds in code implementation. A workaround means the task is incomplete
+- **Complete Solutions**: Always implement proper, complete solutions rather than temporary fixes
+- **Task Completion**: A task is only considered complete when it's properly implemented without workarounds
+
 **🎯 v13.0.0 Development Status (FINAL)**:
 - **Phase 1**: ✅ Core Extraction (100% Complete)
 - **Phase 2**: ✅ Headless Rendering (100% Complete) 
@@ -398,6 +403,12 @@ All v13 development documentation is now complete and ready for production use:
   - ✅ CLI bridge architecture implemented
   - ✅ All MCP tools working with headless API
   - ✅ Production-ready MCP server (13.0.0-phase5)
+
+### v13.1 Planning Documentation
+- **🔧 Technical Debt Checklist**: `/Users/jimmy/jimmy_side_projects/goxel/v13.1-technical-debt-checklist.md`
+  - Critical issues and workarounds identified in v13.0
+  - Comprehensive fix list for true production readiness
+  - Testing and validation requirements for v13.1
 
 ### Project Status: PRODUCTION READY 🎉
 - **All Documentation Complete**: Ready for release distribution

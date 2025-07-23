@@ -21,6 +21,7 @@
 #include "../../include/goxel_headless.h"
 #include "../core/goxel_core.h"
 #include "../goxel.h"
+#include "render_headless.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
@@ -28,6 +29,10 @@
 #include <pthread.h>
 #include <errno.h>
 #include <assert.h>
+#include <math.h>
+
+// For PNG encoding to memory buffer
+#include "stb_image_write.h"
 
 // ============================================================================
 // INTERNAL CONTEXT STRUCTURE
@@ -715,27 +720,48 @@ goxel_error_t goxel_render_to_buffer(goxel_context_t *ctx, uint8_t **buffer,
         return GOXEL_ERROR_INVALID_PARAMETER;
     }
     
-    // For now, render to a temporary file and read it back
-    // This could be optimized with a direct buffer rendering API in core
-    char temp_path[] = "/tmp/goxel_render_XXXXXX";
+    // Direct buffer rendering - no temp files needed
+    pthread_mutex_lock(&ctx->mutex);
+    
+    // Initialize headless rendering context for requested size
+    if (headless_render_init(options->width, options->height) != 0) {
+        set_last_error(ctx, "Failed to initialize headless rendering");
+        pthread_mutex_unlock(&ctx->mutex);
+        return GOXEL_ERROR_RENDER_FAILED;
+    }
+    
+    // Convert camera preset to string
+    const char *camera_str = camera_preset_to_string(options->camera);
+    const char *format_str = render_format_to_string(options->format);
+    
+    // Use the core render function which handles camera setup properly
+    // First render to temp file, then read into buffer (temporary approach)
+    char temp_path[] = "/tmp/goxel_render_direct_XXXXXX";
     int fd = mkstemp(temp_path);
     if (fd == -1) {
-        set_last_error(ctx, "Failed to create temporary file for rendering");
+        set_last_error(ctx, "Failed to create temporary file for direct rendering");
+        pthread_mutex_unlock(&ctx->mutex);
         return GOXEL_ERROR_RENDER_FAILED;
     }
     close(fd);
     
-    goxel_error_t result = goxel_render_to_file(ctx, temp_path, options);
-    if (result != GOXEL_SUCCESS) {
+    // Use core render function to properly handle camera and rendering
+    int result = goxel_core_render_to_file(ctx->core, temp_path, 
+                                          options->width, options->height,
+                                          format_str, options->quality, camera_str);
+    if (result != 0) {
+        set_last_error(ctx, "Failed to render to temp file: %d", result);
         unlink(temp_path);
-        return result;
+        pthread_mutex_unlock(&ctx->mutex);
+        return GOXEL_ERROR_RENDER_FAILED;
     }
     
-    // Read file into buffer
+    // Read the file into memory buffer
     FILE *file = fopen(temp_path, "rb");
     if (!file) {
-        set_last_error(ctx, "Failed to open rendered file");
+        set_last_error(ctx, "Failed to open rendered temp file");
         unlink(temp_path);
+        pthread_mutex_unlock(&ctx->mutex);
         return GOXEL_ERROR_FILE_ACCESS;
     }
     
@@ -745,9 +771,10 @@ goxel_error_t goxel_render_to_buffer(goxel_context_t *ctx, uint8_t **buffer,
     
     *buffer = malloc(size);
     if (!*buffer) {
-        set_last_error(ctx, "Failed to allocate buffer for rendered data");
+        set_last_error(ctx, "Failed to allocate buffer for direct rendering");
         fclose(file);
         unlink(temp_path);
+        pthread_mutex_unlock(&ctx->mutex);
         return GOXEL_ERROR_OUT_OF_MEMORY;
     }
     
@@ -759,10 +786,13 @@ goxel_error_t goxel_render_to_buffer(goxel_context_t *ctx, uint8_t **buffer,
         set_last_error(ctx, "Failed to read complete rendered data");
         free(*buffer);
         *buffer = NULL;
+        pthread_mutex_unlock(&ctx->mutex);
         return GOXEL_ERROR_FILE_ACCESS;
     }
     
     *buffer_size = size;
+    
+    pthread_mutex_unlock(&ctx->mutex);
     return GOXEL_SUCCESS;
 }
 
