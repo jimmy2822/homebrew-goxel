@@ -14,7 +14,7 @@ import json
 import platform
 
 class SimplePerformanceTest:
-    def __init__(self, goxel_cli_path="./goxel-cli"):
+    def __init__(self, goxel_cli_path="../goxel-headless"):
         self.goxel_cli_path = goxel_cli_path
         self.results = {
             "timestamp": time.time(),
@@ -246,7 +246,7 @@ def main():
     if len(sys.argv) > 1:
         goxel_cli_path = sys.argv[1]
     else:
-        goxel_cli_path = "./goxel-cli"
+        goxel_cli_path = "../goxel-headless"
     
     tester = SimplePerformanceTest(goxel_cli_path)
     

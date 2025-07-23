@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+echo 'Running performance tests...'
+python3 simple_perf_test.py || exit 1
+echo 'Performance tests passed!'
