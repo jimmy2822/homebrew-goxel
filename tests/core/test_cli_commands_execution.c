@@ -77,7 +77,7 @@ static int execute_cli_command(const char *command, char *output, size_t output_
     FILE *fp;
     char cmd[1024];
     
-    snprintf(cmd, sizeof(cmd), "../../goxel-headless %s 2>&1", command);
+    snprintf(cmd, sizeof(cmd), "cd .. && ./goxel-headless %s 2>&1", command);
     
     fp = popen(cmd, "r");
     if (fp == NULL) {
@@ -85,7 +85,14 @@ static int execute_cli_command(const char *command, char *output, size_t output_
     }
     
     if (output && output_size > 0) {
+        // Read first line for output capture
         fgets(output, output_size, fp);
+    }
+    
+    // Read all remaining output to prevent SIGPIPE
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        // Consume output to prevent broken pipe
     }
     
     int status = pclose(fp);

@@ -39,36 +39,48 @@ int goxel_core_load_project_impl(goxel_core_context_t *ctx, const char *path)
     }
     fclose(f);
     
-    // For now, just create a new empty project to fix the hanging issue
-    // This is a temporary workaround until we fix the full GOX loader
-    
-    if (ctx->image) {
-        image_delete(ctx->image);
+    // Phase 1: Minimal context initialization
+    if (!ctx->image) {
+        ctx->image = image_new();
+        if (!ctx->image) {
+            LOG_E("Failed to create new image");
+            return -1;
+        }
     }
     
-    ctx->image = image_new();
-    if (!ctx->image) {
-        LOG_E("Failed to create new image");
+    // Phase 2: Isolated GOX loading (avoid global sync during load)
+    image_t *temp_image = image_new();
+    if (!temp_image) {
+        LOG_E("Failed to create temporary image for loading");
         return -1;
     }
     
-    // Set the path for informational purposes
-    if (ctx->image->path) {
-        free(ctx->image->path);
+    int result = load_gox_file_to_image(path, temp_image);
+    
+    if (result == 0) {
+        // Phase 3: Transfer loaded data to context
+        image_delete(ctx->image);
+        ctx->image = temp_image;
+        
+        // Phase 4: Set path and update recent files
+        if (ctx->image->path) free(ctx->image->path);
+        ctx->image->path = strdup(path);
+        
+        // Add to recent files
+        for (int i = 7; i > 0; i--) {
+            strcpy(ctx->recent_files[i], ctx->recent_files[i-1]);
+        }
+        snprintf(ctx->recent_files[0], sizeof(ctx->recent_files[0]), "%s", path);
+        
+        // Phase 5: Safe global synchronization AFTER load complete
+        extern goxel_t goxel;
+        goxel.image = ctx->image;
+        
+        LOG_I("Project loaded successfully: %s", path);
+    } else {
+        image_delete(temp_image);
+        LOG_E("Failed to load project: %s", path);
     }
-    ctx->image->path = strdup(path);
     
-    // Add to recent files
-    for (int i = 7; i > 0; i--) {
-        strcpy(ctx->recent_files[i], ctx->recent_files[i-1]);
-    }
-    snprintf(ctx->recent_files[0], sizeof(ctx->recent_files[0]), "%s", path);
-    
-    // Sync to global goxel context
-    extern goxel_t goxel;
-    goxel.image = ctx->image;
-    
-    LOG_I("Project loading completed (empty project created due to v13.0 limitation)");
-    
-    return 0;
+    return result;
 }

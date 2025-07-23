@@ -305,11 +305,67 @@ int goxel_core_merge_layers(goxel_core_context_t *ctx, int source_id, int target
     
     if (!source_layer || !target_layer || source_layer == target_layer) return -1;
     
-    // Merge source into target - this would need proper volume merging
-    // For now, just delete the source layer after merge
-    // In a real implementation, we would merge source_layer->volume into target_layer->volume
+    // PROPER IMPLEMENTATION: Real volume merging with alpha blending
+    volume_t *source_vol = source_layer->volume;
+    volume_t *target_vol = target_layer->volume;
     
+    // Phase 1: Get source volume bounding box for efficient iteration
+    int bbox[2][3];
+    if (!volume_get_bbox(source_vol, bbox, false)) {
+        // Empty source volume, just delete
+        image_delete_layer(ctx->image, source_layer);
+        return 0;
+    }
+    
+    // Phase 2: Iterate through all voxels in source volume
+    volume_iterator_t iter = volume_get_iterator(source_vol, VOLUME_ITER_VOXELS | VOLUME_ITER_SKIP_EMPTY);
+    int pos[3];
+    
+    while (volume_iter(&iter, pos)) {
+        uint8_t src_voxel[4];
+        volume_get_at(source_vol, &iter, pos, src_voxel);
+        
+        // Skip transparent voxels
+        if (src_voxel[3] == 0) continue;
+        
+        // Get existing voxel at target position
+        uint8_t dst_voxel[4] = {0, 0, 0, 0};
+        volume_get_at(target_vol, NULL, pos, dst_voxel);
+        
+        // Phase 3: Alpha blending
+        uint8_t result[4];
+        if (dst_voxel[3] == 0 || src_voxel[3] == 255) {
+            // No blending needed - source replaces destination
+            memcpy(result, src_voxel, 4);
+        } else if (src_voxel[3] == 0) {
+            // Source is transparent - keep destination
+            memcpy(result, dst_voxel, 4);
+        } else {
+            // Standard alpha blending formula
+            float src_alpha = src_voxel[3] / 255.0f;
+            float dst_alpha = dst_voxel[3] / 255.0f;
+            float out_alpha = src_alpha + dst_alpha * (1.0f - src_alpha);
+            
+            if (out_alpha > 0) {
+                result[0] = (uint8_t)((src_voxel[0] * src_alpha + dst_voxel[0] * dst_alpha * (1.0f - src_alpha)) / out_alpha);
+                result[1] = (uint8_t)((src_voxel[1] * src_alpha + dst_voxel[1] * dst_alpha * (1.0f - src_alpha)) / out_alpha);
+                result[2] = (uint8_t)((src_voxel[2] * src_alpha + dst_voxel[2] * dst_alpha * (1.0f - src_alpha)) / out_alpha);
+                result[3] = (uint8_t)(out_alpha * 255);
+            } else {
+                memset(result, 0, 4);
+            }
+        }
+        
+        // Set the blended result in target volume
+        if (result[3] > 0) {
+            volume_set_at(target_vol, NULL, pos, result);
+        }
+    }
+    
+    // Phase 4: Safe cleanup
     image_delete_layer(ctx->image, source_layer);
+    
+    LOG_I("Layers merged successfully");
     return 0;
 }
 
