@@ -18,3 +18,16 @@ xcuserdata/
 /.cache
 /build/
 /examples/*/build/
+
+# Test files and artifacts
+*.gox
+debug_test*
+debug_voxel*
+test_*.c
+test_*.ply
+test_*.vox
+test_*.png
+libgoxel-headless.dylib
+render_output.*
+tests/test_cli_execution*
+tests/test_*_report
