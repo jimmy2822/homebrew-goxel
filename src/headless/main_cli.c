@@ -124,28 +124,41 @@ int main(int argc, char **argv)
     bool quiet = false;
     const char *config_file = NULL;
     
-    int opt;
-    while ((opt = getopt(argc, argv, "hvqc:")) != -1) {
-        switch (opt) {
-            case 'h':
-                cli_print_help(g_cli_context);
-                cleanup_goxel_context();
-                cli_destroy_context(g_cli_context);
-                return 0;
-            case 'v':
-                cli_print_version();
-                cleanup_goxel_context();
-                cli_destroy_context(g_cli_context);
-                return 0;
-            case 'q':
-                quiet = true;
-                break;
-            case 'c':
-                config_file = optarg;
-                break;
-            default:
+    // Process only global options before command name
+    int command_start = -1;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            cli_print_help(g_cli_context);
+            cleanup_goxel_context();
+            cli_destroy_context(g_cli_context);
+            return 0;
+        } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
+            cli_print_version();
+            cleanup_goxel_context();
+            cli_destroy_context(g_cli_context);
+            return 0;
+        } else if (strcmp(argv[i], "--verbose") == 0) {
+            verbose = true;
+        } else if (strcmp(argv[i], "--quiet") == 0) {
+            quiet = true;
+        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
+            config_file = argv[i + 1];
+            i++; // Skip the config file argument
+        } else if (argv[i][0] != '-') {
+            // This is the command name
+            command_start = i;
+            break;
+        }
+    }
+    
+    // Also handle global options that come after the command
+    if (command_start != -1) {
+        for (int i = command_start + 1; i < argc; i++) {
+            if (strcmp(argv[i], "--verbose") == 0) {
                 verbose = true;
-                break;
+            } else if (strcmp(argv[i], "--quiet") == 0) {
+                quiet = true;
+            }
         }
     }
     
@@ -164,8 +177,6 @@ int main(int argc, char **argv)
     
     printf("DEBUG: About to call cli_run\n");
     fflush(stdout);
-    
-    optind = 0;
     
     cli_result_t result = cli_run(g_cli_context, argc, argv);
     

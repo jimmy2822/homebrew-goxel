@@ -497,7 +497,7 @@ cli_result_t register_project_commands(cli_context_t *ctx)
     cli_add_option(ctx, "create", "n", "name", "Project name", CLI_OPT_STRING, false);
     cli_add_option_with_default(ctx, "create", "w", "width", "Project width in voxels", 
                                CLI_OPT_INT, false, NULL, 64, 0.0f, false);
-    cli_add_option_with_default(ctx, "create", "h", "height", "Project height in voxels",
+    cli_add_option_with_default(ctx, "create", "y", "height", "Project height in voxels",
                                CLI_OPT_INT, false, NULL, 64, 0.0f, false);
     cli_add_option_with_default(ctx, "create", "d", "depth", "Project depth in voxels",
                                CLI_OPT_INT, false, NULL, 64, 0.0f, false);
