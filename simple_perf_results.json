@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753233299.123348,
+  "timestamp": 1753241912.556789,
   "platform": "macOS-15.5-arm64-arm-64bit",
   "architecture": "arm64",
   "tests": {
@@ -10,21 +10,21 @@
       "passes": true
     },
     "cli_startup": {
-      "average_ms": 8.579063415527344,
-      "min_ms": 7.526159286499023,
-      "max_ms": 12.109041213989258,
+      "average_ms": 7.726335525512695,
+      "min_ms": 7.5168609619140625,
+      "max_ms": 8.089780807495117,
       "iterations": 5,
       "target_ms": 1000,
       "passes": true
     },
     "basic_operations": {
       "help_command": {
-        "elapsed_ms": 7.639169692993164,
+        "elapsed_ms": 7.591009140014648,
         "success": true,
         "passes": true
       },
       "version_command": {
-        "elapsed_ms": 7.498025894165039,
+        "elapsed_ms": 7.5130462646484375,
         "success": true,
         "passes": true
       }

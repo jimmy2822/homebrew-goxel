@@ -464,13 +464,22 @@ cli_result_t cli_run(cli_context_t *ctx, int argc, char **argv)
     
     const char *command_name = argv[1];
     
+    printf("DEBUG: About to parse command '%s'...\n", command_name);
+    fflush(stdout);
+    
     cli_args_t *args;
     cli_result_t result = cli_parse_args(ctx, argc, argv, &args);
     if (result != CLI_SUCCESS) {
         return result;
     }
     
+    printf("DEBUG: Command parsing completed, about to execute...\n");
+    fflush(stdout);
+    
     result = cli_execute_command(ctx, command_name, args);
+    
+    printf("DEBUG: Command execution completed with result: %d\n", result);
+    fflush(stdout);
     
     cli_free_args(args);
     return result;

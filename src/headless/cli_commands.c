@@ -178,11 +178,37 @@ cli_result_t cmd_save(cli_context_t *ctx, cli_args_t *args)
 
 cli_result_t cmd_voxel_add(cli_context_t *ctx, cli_args_t *args)
 {
+    printf("DEBUG: ENTERED cmd_voxel_add function\n");
+    fflush(stdout);
+    
     if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
+    
+    printf("DEBUG: Context validation passed in cmd_voxel_add\n");
+    fflush(stdout);
+    
+    printf("DEBUG: Parsing arguments...\n");
+    fflush(stdout);
     
     const char *pos_str = cli_get_option_string(args, "pos", NULL);
     const char *color_str = cli_get_option_string(args, "color", "255,255,255,255");
     int layer_id = cli_get_option_int(args, "layer", -1);
+    
+    printf("DEBUG: Arguments parsed successfully\n");
+    fflush(stdout);
+    
+    // Get project file from positional arguments
+    const char *project_file = NULL;
+    if (cli_get_positional_count(args) > 0) {
+        project_file = cli_get_positional_arg(args, 0);
+    }
+    
+    printf("DEBUG: Project file: %s\n", project_file ? project_file : "NULL");
+    fflush(stdout);
+    
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
     
     if (!pos_str) {
         fprintf(stderr, "Error: Position not specified (use --pos x,y,z)\n");
@@ -206,8 +232,11 @@ cli_result_t cmd_voxel_add(cli_context_t *ctx, cli_args_t *args)
     if (!ctx->quiet) {
         printf("Adding voxel at (%d,%d,%d) with color (%d,%d,%d,%d)", x, y, z, r, g, b, a);
         if (layer_id >= 0) printf(" on layer %d", layer_id);
-        printf("\n");
+        printf(" to project: %s\n", project_file);
     }
+    
+    printf("DEBUG: Getting Goxel context...\n");
+    fflush(stdout);
     
     goxel_core_context_t *goxel_ctx = (goxel_core_context_t*)ctx->goxel_context;
     if (!goxel_ctx) {
@@ -215,11 +244,60 @@ cli_result_t cmd_voxel_add(cli_context_t *ctx, cli_args_t *args)
         return CLI_ERROR_GENERIC;
     }
     
+    printf("DEBUG: Goxel context retrieved successfully\n");
+    fflush(stdout);
+    
+    // Load project file or create new project if it doesn't exist
+    printf("DEBUG: Checking if project file exists...\n");
+    fflush(stdout);
+    
+    FILE *test_file = fopen(project_file, "r");
+    
+    printf("DEBUG: File check completed\n");
+    fflush(stdout);
+    if (test_file) {
+        fclose(test_file);
+        printf("DEBUG: File exists, loading project...\n");
+        fflush(stdout);
+        
+        // File exists, try to load it
+        if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+            fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+            return CLI_ERROR_PROJECT_LOAD_FAILED;
+        }
+        
+        printf("DEBUG: Project loaded successfully\n");
+        fflush(stdout);
+    } else {
+        printf("DEBUG: File doesn't exist, creating new project...\n");
+        fflush(stdout);
+        
+        // File doesn't exist, create a new project
+        if (!ctx->quiet) {
+            printf("Creating new project: %s\n", project_file);
+        }
+        if (goxel_core_create_project(goxel_ctx, project_file, 64, 64, 64) != 0) {
+            fprintf(stderr, "Error: Failed to create new project\n");
+            return CLI_ERROR_PROJECT_LOAD_FAILED;
+        }
+        
+        printf("DEBUG: New project created successfully\n");
+        fflush(stdout);
+    }
+    
     uint8_t color[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
     
+    printf("DEBUG: About to call goxel_core_add_voxel()...\n");
+    fflush(stdout);
     if (goxel_core_add_voxel(goxel_ctx, x, y, z, color, layer_id) != 0) {
         fprintf(stderr, "Error: Failed to add voxel\n");
         return CLI_ERROR_VOXEL_OPERATION_FAILED;
+    }
+    
+    // Save project back
+    if (goxel_core_save_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to save project to '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_SAVE_FAILED;
     }
     
     if (!ctx->quiet) {

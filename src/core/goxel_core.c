@@ -19,6 +19,7 @@
 #include "goxel_core.h"
 #include "../goxel.h"  // For function prototypes and constants
 #include "../headless/render_headless.h"  // For headless rendering functions
+#include "file_format.h"  // For file format handling
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
@@ -98,14 +99,34 @@ void goxel_core_reset(goxel_core_context_t *ctx)
 
 int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int width, int height, int depth)
 {
+    printf("DEBUG: ENTERED goxel_core_create_project()\n");
+    fflush(stdout);
+    
     if (!ctx) return -1;
     
+    printf("DEBUG: Context validation passed\n");
+    fflush(stdout);
+    
     if (ctx->image) {
+        printf("DEBUG: Deleting existing image...\n");
+        fflush(stdout);
         image_delete(ctx->image);
+        printf("DEBUG: Existing image deleted\n");
+        fflush(stdout);
     }
     
+    printf("DEBUG: About to call image_new() - this likely hangs...\n");
+    fflush(stdout);
+    
     ctx->image = image_new();
+    
+    printf("DEBUG: image_new() completed successfully!\n");
+    fflush(stdout);
+    
     if (!ctx->image) return -1;
+    
+    printf("DEBUG: About to sync to global goxel context...\n");
+    fflush(stdout);
     
     // Sync to global goxel context for export functions
     extern goxel_t goxel;
@@ -114,12 +135,31 @@ int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int w
     }
     goxel.image = ctx->image;
     
+    printf("DEBUG: Global context sync completed\n");
+    fflush(stdout);
+    
     if (name) {
-        snprintf(ctx->image->path, sizeof(ctx->image->path), "%s", name);
+        printf("DEBUG: Setting image path to: %s\n", name);
+        fflush(stdout);
+        
+        // Allocate memory for path string (path is char*, not char[])
+        if (ctx->image) {
+            if (ctx->image->path) {
+                free(ctx->image->path);
+            }
+            ctx->image->path = strdup(name);
+            printf("DEBUG: Image path allocated and set successfully\n");
+        } else {
+            printf("ERROR: ctx->image is NULL!\n");
+        }
+        fflush(stdout);
     }
     
     // Note: width, height, depth parameters are for initial project setup
     // In Goxel, projects can grow dynamically, so these are informational
+    
+    printf("DEBUG: goxel_core_create_project() completed successfully\n");
+    fflush(stdout);
     
     return 0;
 }
@@ -128,15 +168,37 @@ int goxel_core_load_project(goxel_core_context_t *ctx, const char *path)
 {
     if (!ctx || !path) return -1;
     
+    // Save current global image
+    extern goxel_t goxel;
+    image_t *old_global_image = goxel.image;
+    
+    // Create new image and set as global for import
     image_t *img = image_new();
     if (!img) return -1;
+    goxel.image = img;
     
-    int ret = goxel_import_file(path, NULL);
+    // Use file format system directly to avoid GUI dependencies
+    const file_format_t *f = file_format_get(path, NULL, "r");
+    int ret = -1;
+    
+    if (f && f->import_func) {
+        ret = f->import_func(f, goxel.image, path);
+    } else if (str_endswith(path, ".gox")) {
+        // For .gox files, try to use the gox format handler directly
+        f = file_format_get(path, "gox", "r");
+        if (f && f->import_func) {
+            ret = f->import_func(f, goxel.image, path);
+        }
+    }
+    
     if (ret != 0) {
+        // Restore old global image and cleanup
+        goxel.image = old_global_image;
         image_delete(img);
         return ret;
     }
     
+    // Import successful - update context
     if (ctx->image) {
         image_delete(ctx->image);
     }
@@ -169,22 +231,49 @@ int goxel_core_save_project(goxel_core_context_t *ctx, const char *path)
 
 int goxel_core_add_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4], int layer_id)
 {
+    printf("DEBUG: Entered goxel_core_add_voxel()\n");
+    fflush(stdout);
+    
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = layer_id == 0 ? ctx->image->active_layer : NULL;
+    printf("DEBUG: Context validation passed\n");
+    fflush(stdout);
     
-    // Find layer by ID if specified
-    if (layer_id != 0) {
+    layer_t *layer = (layer_id == 0 || layer_id == -1) ? ctx->image->active_layer : NULL;
+    
+    printf("DEBUG: layer_id: %d, active_layer: %p\n", layer_id, ctx->image->active_layer);
+    fflush(stdout);
+    
+    // Find layer by ID if specified (positive IDs only)
+    if (layer_id > 0) {
+        printf("DEBUG: Searching for layer by ID...\n");
+        fflush(stdout);
         for (layer = ctx->image->layers; layer; layer = layer->next) {
+            printf("DEBUG: Checking layer ID: %d\n", layer->id);
+            fflush(stdout);
             if (layer->id == layer_id) break;
         }
     }
-    if (!layer) return -1;
+    
+    printf("DEBUG: Final layer pointer: %p\n", layer);
+    fflush(stdout);
+    
+    if (!layer) {
+        printf("ERROR: No valid layer found for voxel operation\n");
+        fflush(stdout);
+        return -1;
+    }
+    
+    printf("DEBUG: About to call volume_set_at() - this is where hanging likely occurs...\n");
+    fflush(stdout);
     
     int pos[3] = {x, y, z};
     uint8_t color[4] = {rgba[0], rgba[1], rgba[2], rgba[3]};
     
     volume_set_at(layer->volume, NULL, pos, color);
+    
+    printf("DEBUG: volume_set_at() completed successfully!\n");
+    fflush(stdout);
     
     return 0;
 }
