@@ -315,10 +315,27 @@ cli_result_t cmd_voxel_remove(cli_context_t *ctx, cli_args_t *args)
     const char *box_str = cli_get_option_string(args, "box", NULL);
     int layer_id = cli_get_option_int(args, "layer", -1);
     
+    // Get project file from positional arguments
+    const char *project_file = NULL;
+    if (cli_get_positional_count(args) > 0) {
+        project_file = cli_get_positional_arg(args, 0);
+    }
+    
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
     goxel_core_context_t *goxel_ctx = (goxel_core_context_t*)ctx->goxel_context;
     if (!goxel_ctx) {
         fprintf(stderr, "Error: Goxel context not initialized\n");
         return CLI_ERROR_GENERIC;
+    }
+    
+    // Load project file
+    if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_LOAD_FAILED;
     }
     
     if (box_str) {
@@ -362,6 +379,12 @@ cli_result_t cmd_voxel_remove(cli_context_t *ctx, cli_args_t *args)
         return CLI_ERROR_INVALID_ARGS;
     }
     
+    // Save project back
+    if (goxel_core_save_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to save project to '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_SAVE_FAILED;
+    }
+    
     if (!ctx->quiet) {
         printf("Voxel(s) removed successfully\n");
     }
@@ -376,6 +399,17 @@ cli_result_t cmd_voxel_paint(cli_context_t *ctx, cli_args_t *args)
     const char *pos_str = cli_get_option_string(args, "pos", NULL);
     const char *color_str = cli_get_option_string(args, "color", NULL);
     int layer_id = cli_get_option_int(args, "layer", -1);
+    
+    // Get project file from positional arguments
+    const char *project_file = NULL;
+    if (cli_get_positional_count(args) > 0) {
+        project_file = cli_get_positional_arg(args, 0);
+    }
+    
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
     
     if (!pos_str) {
         fprintf(stderr, "Error: Position not specified (use --pos x,y,z)\n");
@@ -413,11 +447,23 @@ cli_result_t cmd_voxel_paint(cli_context_t *ctx, cli_args_t *args)
         return CLI_ERROR_GENERIC;
     }
     
+    // Load project file
+    if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_LOAD_FAILED;
+    }
+    
     uint8_t color[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
     
     if (goxel_core_paint_voxel(goxel_ctx, x, y, z, color, layer_id) != 0) {
         fprintf(stderr, "Error: Failed to paint voxel\n");
         return CLI_ERROR_VOXEL_OPERATION_FAILED;
+    }
+    
+    // Save project back
+    if (goxel_core_save_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to save project to '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_SAVE_FAILED;
     }
     
     if (!ctx->quiet) {
@@ -492,7 +538,7 @@ cli_result_t register_voxel_commands(cli_context_t *ctx)
     
     result = cli_register_command(ctx, "voxel-remove",
                                  "Remove voxel(s) at the specified position or area",
-                                 "[OPTIONS]",
+                                 "[OPTIONS] <project-file>",
                                  cmd_voxel_remove);
     if (result != CLI_SUCCESS) return result;
     
@@ -503,7 +549,7 @@ cli_result_t register_voxel_commands(cli_context_t *ctx)
     
     result = cli_register_command(ctx, "voxel-paint",
                                  "Paint a voxel at the specified position",
-                                 "[OPTIONS]",
+                                 "[OPTIONS] <project-file>",
                                  cmd_voxel_paint);
     if (result != CLI_SUCCESS) return result;
     
@@ -515,7 +561,7 @@ cli_result_t register_voxel_commands(cli_context_t *ctx)
     // Layer commands
     result = cli_register_command(ctx, "layer-create",
                                  "Create a new layer",
-                                 "[OPTIONS]",
+                                 "[OPTIONS] <project-file>",
                                  cmd_layer_create);
     if (result != CLI_SUCCESS) return result;
     
@@ -547,7 +593,7 @@ cli_result_t register_voxel_commands(cli_context_t *ctx)
 
     result = cli_register_command(ctx, "layer-visibility",
                                  "Set layer visibility",
-                                 "[OPTIONS]",
+                                 "[OPTIONS] <project-file>",
                                  cmd_layer_visibility);
     if (result != CLI_SUCCESS) return result;
     
@@ -568,7 +614,7 @@ cli_result_t register_voxel_commands(cli_context_t *ctx)
     // Rendering commands
     result = cli_register_command(ctx, "render",
                                  "Render the scene to an image file",
-                                 "[OPTIONS] OUTPUT_FILE",
+                                 "[OPTIONS] <project-file> <output-file>",
                                  cmd_render);
     if (result != CLI_SUCCESS) return result;
     
@@ -587,7 +633,7 @@ cli_result_t register_voxel_commands(cli_context_t *ctx)
     // Export commands
     result = cli_register_command(ctx, "export",
                                  "Export project to various formats",
-                                 "[OPTIONS] OUTPUT_FILE",
+                                 "[OPTIONS] <project-file> <output-file>",
                                  cmd_export);
     if (result != CLI_SUCCESS) return result;
     
@@ -621,6 +667,17 @@ cli_result_t cmd_layer_create(cli_context_t *ctx, cli_args_t *args)
 {
     if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
     
+    // Get project file from positional arguments
+    const char *project_file = NULL;
+    if (cli_get_positional_count(args) > 0) {
+        project_file = cli_get_positional_arg(args, 0);
+    }
+    
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
     const char *name = cli_get_option_string(args, "name", "New Layer");
     const char *color_str = cli_get_option_string(args, "color", NULL);
     int visible = cli_get_option_int(args, "visible", 1);
@@ -628,13 +685,19 @@ cli_result_t cmd_layer_create(cli_context_t *ctx, cli_args_t *args)
     if (!ctx->quiet) {
         printf("Creating layer '%s'", name);
         if (color_str) printf(" with color %s", color_str);
-        printf(" (visibility: %s)\n", visible ? "visible" : "hidden");
+        printf(" (visibility: %s) in project: %s\n", visible ? "visible" : "hidden", project_file);
     }
     
     goxel_core_context_t *goxel_ctx = (goxel_core_context_t*)ctx->goxel_context;
     if (!goxel_ctx) {
         fprintf(stderr, "Error: Goxel context not initialized\n");
         return CLI_ERROR_GENERIC;
+    }
+    
+    // Load project file
+    if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_LOAD_FAILED;
     }
     
     // Parse color if provided
@@ -649,9 +712,16 @@ cli_result_t cmd_layer_create(cli_context_t *ctx, cli_args_t *args)
         }
     }
     
-    if (goxel_core_create_layer(goxel_ctx, name, color, visible) != 0) {
+    int layer_id = goxel_core_create_layer(goxel_ctx, name, color, visible);
+    if (layer_id < 0) {
         fprintf(stderr, "Error: Failed to create layer\n");
         return CLI_ERROR_GENERIC;
+    }
+    
+    // Save project back
+    if (goxel_core_save_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to save project to '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_SAVE_FAILED;
     }
     
     if (!ctx->quiet) {
@@ -750,6 +820,17 @@ cli_result_t cmd_layer_visibility(cli_context_t *ctx, cli_args_t *args)
 {
     if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
     
+    // Get project file from positional arguments
+    const char *project_file = NULL;
+    if (cli_get_positional_count(args) > 0) {
+        project_file = cli_get_positional_arg(args, 0);
+    }
+    
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
     int layer_id = cli_get_option_int(args, "id", -1);
     const char *name = cli_get_option_string(args, "name", NULL);
     int visible = cli_get_option_int(args, "visible", -1);
@@ -768,7 +849,7 @@ cli_result_t cmd_layer_visibility(cli_context_t *ctx, cli_args_t *args)
         printf("Setting layer ");
         if (layer_id >= 0) printf("ID %d", layer_id);
         else printf("'%s'", name);
-        printf(" visibility to %s\n", visible ? "visible" : "hidden");
+        printf(" visibility to %s in project: %s\n", visible ? "visible" : "hidden", project_file);
     }
     
     goxel_core_context_t *goxel_ctx = (goxel_core_context_t*)ctx->goxel_context;
@@ -777,9 +858,21 @@ cli_result_t cmd_layer_visibility(cli_context_t *ctx, cli_args_t *args)
         return CLI_ERROR_GENERIC;
     }
     
+    // Load project file
+    if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_LOAD_FAILED;
+    }
+    
     if (goxel_core_set_layer_visibility(goxel_ctx, layer_id, name, visible) != 0) {
         fprintf(stderr, "Error: Failed to set layer visibility\n");
         return CLI_ERROR_GENERIC;
+    }
+    
+    // Save project back
+    if (goxel_core_save_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to save project to '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_SAVE_FAILED;
     }
     
     if (!ctx->quiet) {
@@ -837,31 +930,60 @@ cli_result_t cmd_render(cli_context_t *ctx, cli_args_t *args)
 {
     if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
     
+    // Get project file and output file from positional arguments
+    const char *project_file = NULL;
     const char *output_file = cli_get_option_string(args, "output", NULL);
+    
+    if (cli_get_positional_count(args) >= 2) {
+        project_file = cli_get_positional_arg(args, 0);
+        if (!output_file) {
+            output_file = cli_get_positional_arg(args, 1);
+        }
+    } else if (cli_get_positional_count(args) == 1) {
+        if (!output_file) {
+            // Single argument could be either project or output - check file extension
+            const char *arg = cli_get_positional_arg(args, 0);
+            if (strstr(arg, ".gox") || strstr(arg, ".vox") || strstr(arg, ".qb")) {
+                project_file = arg;
+            } else {
+                output_file = arg;
+            }
+        } else {
+            project_file = cli_get_positional_arg(args, 0);
+        }
+    }
+    
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
+    if (!output_file) {
+        fprintf(stderr, "Error: Output file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
     const char *camera_preset = cli_get_option_string(args, "camera", "default");
     int width = cli_get_option_int(args, "width", 800);
     int height = cli_get_option_int(args, "height", 600);
     const char *format = cli_get_option_string(args, "format", "png");
     int quality = cli_get_option_int(args, "quality", 90);
     
-    if (!output_file) {
-        if (cli_get_positional_count(args) > 0) {
-            output_file = cli_get_positional_arg(args, 0);
-        } else {
-            fprintf(stderr, "Error: Output file not specified\n");
-            return CLI_ERROR_INVALID_ARGS;
-        }
-    }
-    
     if (!ctx->quiet) {
-        printf("Rendering scene to %s (%dx%d, format: %s, quality: %d, camera: %s)\n",
-               output_file, width, height, format, quality, camera_preset);
+        printf("Rendering project %s to %s (%dx%d, format: %s, quality: %d, camera: %s)\n",
+               project_file, output_file, width, height, format, quality, camera_preset);
     }
     
     goxel_core_context_t *goxel_ctx = (goxel_core_context_t*)ctx->goxel_context;
     if (!goxel_ctx) {
         fprintf(stderr, "Error: Goxel context not initialized\n");
         return CLI_ERROR_GENERIC;
+    }
+    
+    // Load project file
+    if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_LOAD_FAILED;
     }
     
     if (goxel_core_render_to_file(goxel_ctx, output_file, width, height, format, quality, camera_preset) != 0) {
@@ -881,20 +1003,36 @@ cli_result_t cmd_export(cli_context_t *ctx, cli_args_t *args)
 {
     if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
     
+    // Get project file and output file from positional arguments  
+    const char *project_file = NULL;
     const char *output_file = cli_get_option_string(args, "output", NULL);
     const char *format = cli_get_option_string(args, "format", NULL);
     
-    if (!output_file) {
-        if (cli_get_positional_count(args) > 0) {
+    if (cli_get_positional_count(args) >= 2) {
+        project_file = cli_get_positional_arg(args, 0);
+        if (!output_file) {
+            output_file = cli_get_positional_arg(args, 1);
+        }
+    } else if (cli_get_positional_count(args) == 1) {
+        if (!output_file) {
             output_file = cli_get_positional_arg(args, 0);
         } else {
-            fprintf(stderr, "Error: Output file not specified\n");
-            return CLI_ERROR_INVALID_ARGS;
+            project_file = cli_get_positional_arg(args, 0);
         }
     }
     
+    if (!project_file) {
+        fprintf(stderr, "Error: Project file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
+    if (!output_file) {
+        fprintf(stderr, "Error: Output file not specified\n");
+        return CLI_ERROR_INVALID_ARGS;
+    }
+    
     if (!ctx->quiet) {
-        printf("Exporting project to %s", output_file);
+        printf("Exporting project %s to %s", project_file, output_file);
         if (format) printf(" (format: %s)", format);
         printf("\n");
     }
@@ -903,6 +1041,12 @@ cli_result_t cmd_export(cli_context_t *ctx, cli_args_t *args)
     if (!goxel_ctx) {
         fprintf(stderr, "Error: Goxel context not initialized\n");
         return CLI_ERROR_GENERIC;
+    }
+    
+    // Load project file
+    if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+        fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+        return CLI_ERROR_PROJECT_LOAD_FAILED;
     }
     
     if (goxel_core_export_project(goxel_ctx, output_file, format) != 0) {
