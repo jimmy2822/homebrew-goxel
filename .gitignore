@@ -1,10 +1,12 @@
 *.o
+*.os
 *.swp
 *~
 *.obj
 .sconsign.dblite
 /.sconf_temp
 /goxel
+/goxel-cli
 /imgui.ini
 /config.log
 .DS_Store
@@ -14,3 +16,5 @@ xcuserdata/
 /compile_commands.json
 /TAGS
 /.cache
+/build/
+/examples/*/build/
