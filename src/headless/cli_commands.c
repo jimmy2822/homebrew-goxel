@@ -87,17 +87,26 @@ cli_result_t cmd_open(cli_context_t *ctx, cli_args_t *args)
         }
     }
     
+    printf("DEBUG: cmd_open - got input_file: %s\n", input_file);
+    fflush(stdout);
+    
     if (!ctx->quiet) {
         printf("Opening project: %s", input_file);
         if (read_only) printf(" (read-only mode)");
         printf("\n");
     }
     
+    printf("DEBUG: cmd_open - getting goxel context\n");
+    fflush(stdout);
+    
     goxel_core_context_t *goxel_ctx = (goxel_core_context_t*)ctx->goxel_context;
     if (!goxel_ctx) {
         fprintf(stderr, "Error: Goxel context not initialized\n");
         return CLI_ERROR_GENERIC;
     }
+    
+    printf("DEBUG: cmd_open - calling goxel_core_load_project\n");
+    fflush(stdout);
     
     if (goxel_core_load_project(goxel_ctx, input_file) != 0) {
         fprintf(stderr, "Error: Failed to load project from '%s'\n", input_file);

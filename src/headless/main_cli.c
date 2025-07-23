@@ -151,6 +151,9 @@ int main(int argc, char **argv)
     
     cli_set_global_options(g_cli_context, verbose, quiet, config_file);
     
+    printf("DEBUG: Set global options, argc=%d\n", argc);
+    fflush(stdout);
+    
     if (!quiet && argc == 1) {
         print_startup_info();
         cli_print_help(g_cli_context);
@@ -159,9 +162,15 @@ int main(int argc, char **argv)
         return 0;
     }
     
+    printf("DEBUG: About to call cli_run\n");
+    fflush(stdout);
+    
     optind = 0;
     
     cli_result_t result = cli_run(g_cli_context, argc, argv);
+    
+    printf("DEBUG: cli_run returned %d\n", result);
+    fflush(stdout);
     if (result != CLI_SUCCESS) {
         if (!quiet) {
             fprintf(stderr, "Command failed: %s\n", cli_error_string(result));

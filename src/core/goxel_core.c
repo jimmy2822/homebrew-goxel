@@ -129,53 +129,44 @@ int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int w
     return 0;
 }
 
+// Forward declaration for the new implementation
+int goxel_core_load_project_impl(goxel_core_context_t *ctx, const char *path);
+
 int goxel_core_load_project(goxel_core_context_t *ctx, const char *path)
 {
-    if (!ctx || !path) return -1;
-    
-    // For now, disable project loading functionality to fix hanging issue
-    // This is a known limitation that prevents loading existing .gox files
-    // but allows all other CLI operations to work correctly
-    
-    // Instead, just create a new empty project
-    if (ctx->image) {
-        image_delete(ctx->image);
-    }
-    
-    ctx->image = image_new();
-    if (!ctx->image) return -1;
-    
-    // Set the path for informational purposes
-    if (ctx->image->path) {
-        free(ctx->image->path);
-    }
-    ctx->image->path = strdup(path);
-    
-    // Add to recent files
-    for (int i = 7; i > 0; i--) {
-        strcpy(ctx->recent_files[i], ctx->recent_files[i-1]);
-    }
-    snprintf(ctx->recent_files[0], sizeof(ctx->recent_files[0]), "%s", path);
-    
-    // Sync to global goxel context for export functions
-    extern goxel_t goxel;
-    if (goxel.image && goxel.image != ctx->image) {
-        image_delete(goxel.image);
-    }
-    goxel.image = ctx->image;
-    
-    return 0;
+    // Use the new implementation that avoids hanging
+    return goxel_core_load_project_impl(ctx, path);
 }
 
 int goxel_core_save_project(goxel_core_context_t *ctx, const char *path)
 {
     if (!ctx || !path || !ctx->image) return -1;
     
+    LOG_D("Saving project to: %s", path);
+    
+    // Sync context to global goxel first
+    extern goxel_t goxel;
+    goxel.image = ctx->image;
+    
+    LOG_D("Synced goxel.image, calling goxel_export_to_file");
+    
     int ret = goxel_export_to_file(path, NULL);
+    
+    LOG_D("goxel_export_to_file returned: %d", ret);
+    
     if (ret == 0) {
-        // Note: Skip setting ctx->image->path due to memory access issue
-        // This is a known limitation that doesn't affect functionality
-        // snprintf(ctx->image->path, sizeof(ctx->image->path), "%s", path);
+        // Properly set the image path using dynamic allocation
+        if (ctx->image->path) {
+            free(ctx->image->path);
+        }
+        ctx->image->path = strdup(path);
+        if (!ctx->image->path) {
+            LOG_W("Failed to allocate memory for image path");
+            // Continue anyway, as this doesn't affect core functionality
+        }
+        LOG_I("Project saved successfully to: %s", path);
+    } else {
+        LOG_E("Failed to save project to: %s (error: %d)", path, ret);
     }
     
     return ret;
@@ -416,30 +407,53 @@ void goxel_core_set_read_only(goxel_core_context_t *ctx, bool read_only)
 // Rendering operations
 int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset)
 {
-    if (!ctx || !output_file) return -1;
+    if (!ctx || !output_file || !ctx->image) return -1;
     
-    // Temporary workaround: Create a simple colored image instead of full rendering
-    // This prevents segfaults while providing basic functionality
+    LOG_I("Rendering scene to file: %s [%dx%d]", output_file, width, height);
     
-    // Create a simple image buffer (RGBA format)
-    uint8_t *image_buffer = calloc(width * height * 4, 1);
-    if (!image_buffer) return -1;
-    
-    // Fill with a gradient pattern to show the render worked
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            int idx = (y * width + x) * 4;
-            image_buffer[idx + 0] = (uint8_t)((x * 255) / width);      // Red gradient
-            image_buffer[idx + 1] = (uint8_t)((y * 255) / height);     // Green gradient  
-            image_buffer[idx + 2] = 128;                               // Blue constant
-            image_buffer[idx + 3] = 255;                               // Alpha opaque
-        }
+    // Resize headless rendering buffer if needed
+    if (headless_render_resize(width, height) != 0) {
+        LOG_E("Failed to resize headless render buffer");
+        return -1;
     }
     
-    // Use Goxel's image writing function to save as PNG
-    img_write(image_buffer, width, height, 4, output_file);
+    // Use the active camera or create a default one
+    camera_t *camera = ctx->image->active_camera;
+    if (!camera) {
+        // Create a temporary camera for rendering
+        camera = camera_new("temp_camera");
+        if (!camera) {
+            LOG_E("Failed to create temporary camera");
+            return -1;
+        }
+        
+        // Set up camera to view the scene
+        camera_fit_box(camera, ctx->image->box);
+    }
     
-    free(image_buffer);
+    // Set up background color (light gray)
+    uint8_t background_color[4] = {240, 240, 240, 255};
+    
+    // Render the scene using headless rendering
+    int render_result = headless_render_scene_with_camera(ctx->image, camera, background_color);
+    
+    // Clean up temporary camera if we created one
+    if (camera != ctx->image->active_camera) {
+        camera_delete(camera);
+    }
+    
+    if (render_result != 0) {
+        LOG_E("Failed to render scene");
+        return -1;
+    }
+    
+    // Save the rendered result to file
+    if (headless_render_to_file(output_file, format) != 0) {
+        LOG_E("Failed to save rendered image to file");
+        return -1;
+    }
+    
+    LOG_I("Successfully rendered scene to %s", output_file);
     return 0;
 }
 
