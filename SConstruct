@@ -122,7 +122,9 @@ if env['headless'] or env['cli_tools']:
     for root, dirnames, filenames in os.walk('src/headless'):
         for filename in filenames:
             if filename.endswith('.c') or filename.endswith('.cpp'):
-                headless_sources.append(os.path.join(root, filename))
+                # Skip the stub file since we have the real implementation
+                if filename != 'goxel_headless_api_stub.c':
+                    headless_sources.append(os.path.join(root, filename))
 
 # Include remaining src files (excluding core/, gui/, headless/ subdirs)
 other_sources = []
@@ -188,8 +190,8 @@ if env['cli_tools'] and not env['headless']:
         sources.remove(cli_main)
     sources.append(cli_main)
 
-# Check for libpng.
-if conf.CheckLibWithHeader('libpng', 'png.h', 'c'):
+# Check for libpng (but skip for headless mode to use STB instead).
+if not env['headless'] and conf.CheckLibWithHeader('libpng', 'png.h', 'c'):
     env.Append(CPPDEFINES='HAVE_LIBPNG=1')
 
 # Linux compilation support.

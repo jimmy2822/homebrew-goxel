@@ -18,6 +18,7 @@
 
 #include "goxel_core.h"
 #include "../goxel.h"  // For function prototypes and constants
+#include "../headless/render_headless.h"  // For headless rendering functions
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
@@ -393,11 +394,25 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
 {
     if (!ctx || !output_file) return -1;
     
-    // Placeholder implementation - would need actual headless rendering
-    // This would use the headless rendering system to create an image
-    // and save it to the specified file
+    // Use the existing headless rendering system
+    // First, ensure we have proper headless rendering initialized
+    if (!headless_render_is_initialized()) {
+        if (headless_render_init(width, height) != 0) {
+            return -1;
+        }
+    } else {
+        // Resize if needed
+        headless_render_resize(width, height);
+    }
     
-    return 0; // Success for now
+    // Render the current scene
+    if (headless_render_scene() != 0) {
+        return -1;
+    }
+    
+    // Save to file using the existing headless render function
+    // This function already handles PNG output via img_write (STB)
+    return headless_render_to_file(output_file, format ? format : "png");
 }
 
 // Export operations  

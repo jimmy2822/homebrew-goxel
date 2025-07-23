@@ -94,63 +94,8 @@ texture_t *texture_new_image(const char *path, int flags)
     return NULL;
 }
 
-// PNG stub functions for headless mode
-typedef struct png_struct_def png_struct;
-typedef struct png_info_def png_info;
-typedef png_struct* png_structp;
-typedef png_info* png_infop;
-typedef void* png_voidp;
-typedef unsigned char png_byte;
-
-png_structp png_create_write_struct(const char *version, png_voidp error_ptr, void *error_fn, void *warn_fn)
-{
-    (void)version; (void)error_ptr; (void)error_fn; (void)warn_fn;
-    return NULL;
-}
-
-png_infop png_create_info_struct(png_structp png_ptr)
-{
-    (void)png_ptr;
-    return NULL;
-}
-
-void png_destroy_write_struct(png_structp *png_ptr_ptr, png_infop *info_ptr_ptr)
-{
-    (void)png_ptr_ptr; (void)info_ptr_ptr;
-}
-
-void png_init_io(png_structp png_ptr, void *fp)
-{
-    (void)png_ptr; (void)fp;
-}
-
-void png_set_IHDR(png_structp png_ptr, png_infop info_ptr, int width, int height, 
-                  int bit_depth, int color_type, int interlace_method, 
-                  int compression_method, int filter_method)
-{
-    (void)png_ptr; (void)info_ptr; (void)width; (void)height; (void)bit_depth;
-    (void)color_type; (void)interlace_method; (void)compression_method; (void)filter_method;
-}
-
-void png_write_info(png_structp png_ptr, png_infop info_ptr)
-{
-    (void)png_ptr; (void)info_ptr;
-}
-
-void png_write_row(png_structp png_ptr, png_byte *row)
-{
-    (void)png_ptr; (void)row;
-}
-
-void png_write_end(png_structp png_ptr, png_infop info_ptr)
-{
-    (void)png_ptr; (void)info_ptr;
-}
-
-void png_set_longjmp_fn(png_structp png_ptr, void *longjmp_fn, size_t jmp_buf_size)
-{
-    (void)png_ptr; (void)longjmp_fn; (void)jmp_buf_size;
-}
+// PNG functionality is provided by STB image library in core/utils/img.c
+// No stubs needed - STB implementation works without libpng dependency
 
 // Global goxel instance for headless mode
 goxel_t goxel;
@@ -309,77 +254,9 @@ layer_t *goxel_add_layer(const char *name)
     return layer;
 }
 
-// Delete layer
-void goxel_delete_layer(layer_t *layer)
-{
-    if (!goxel.image || !layer) {
-        return;
-    }
-    
-    if (goxel.image->active_layer == layer) {
-        // Set active layer to another one if available
-        layer_t *next = layer->next ? layer->next : 
-                       (layer->prev ? layer->prev : NULL);
-        goxel.image->active_layer = next;
-    }
-    
-    DL_DELETE(goxel.image->layers, layer);
-    layer_delete(layer);
-}
 
-// Tool painting operations (simplified for headless)
-void goxel_add_voxel(const float pos[3], const float color[4])
-{
-    if (!goxel.image || !goxel.image->active_layer) {
-        return;
-    }
-    
-    float box[4][4];
-    // Create a 1x1x1 box at the given position
-    mat4_set_identity(box);
-    mat4_itranslate(box, pos[0], pos[1], pos[2]);
-    
-    painter_t painter = goxel.painter;
-    painter.mode = MODE_OVER;
-    memcpy(painter.color, color, sizeof(painter.color));
-    
-    volume_op(goxel.image->active_layer->volume, &painter, box);
-}
 
-void goxel_remove_voxel(const float pos[3])
-{
-    if (!goxel.image || !goxel.image->active_layer) {
-        return;
-    }
-    
-    float box[4][4];
-    // Create a 1x1x1 box at the given position
-    mat4_set_identity(box);
-    mat4_itranslate(box, pos[0], pos[1], pos[2]);
-    
-    painter_t painter = goxel.painter;
-    painter.mode = MODE_SUB;
-    
-    volume_op(goxel.image->active_layer->volume, &painter, box);
-}
 
-void goxel_paint_voxel(const float pos[3], const float color[4])
-{
-    if (!goxel.image || !goxel.image->active_layer) {
-        return;
-    }
-    
-    float box[4][4];
-    // Create a 1x1x1 box at the given position
-    mat4_set_identity(box);
-    mat4_itranslate(box, pos[0], pos[1], pos[2]);
-    
-    painter_t painter = goxel.painter;
-    painter.mode = MODE_PAINT;
-    memcpy(painter.color, color, sizeof(painter.color));
-    
-    volume_op(goxel.image->active_layer->volume, &painter, box);
-}
 
 // Project operations
 void goxel_new_project(void)
@@ -387,13 +264,3 @@ void goxel_new_project(void)
     goxel_reset();
 }
 
-int goxel_load_project(const char *path)
-{
-    return load_from_file(path, NULL);
-}
-
-int goxel_save_project(const char *path)
-{
-    save_to_file(goxel.image, path);
-    return 0;
-}

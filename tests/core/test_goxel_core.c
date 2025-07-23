@@ -71,7 +71,7 @@ TEST(project_creation)
     int ret = goxel_core_init(&ctx);
     ASSERT_EQ(ret, 0);
     
-    ret = goxel_core_create_project(&ctx, "test_project");
+    ret = goxel_core_create_project(&ctx, "test_project", 64, 64, 64);
     ASSERT_EQ(ret, 0);
     ASSERT(ctx.image != NULL);
     
@@ -87,11 +87,12 @@ TEST(layer_operations)
     int ret = goxel_core_init(&ctx);
     ASSERT_EQ(ret, 0);
     
-    ret = goxel_core_create_project(&ctx, "test_project");
+    ret = goxel_core_create_project(&ctx, "test_project", 64, 64, 64);
     ASSERT_EQ(ret, 0);
     
     // Create a new layer
-    int layer_id = goxel_core_create_layer(&ctx, "test_layer");
+    uint8_t layer_color[4] = {255, 255, 255, 255};
+    int layer_id = goxel_core_create_layer(&ctx, "test_layer", layer_color, 1);
     ASSERT(layer_id >= 0);
     
     // Set active layer
@@ -110,12 +111,12 @@ TEST(voxel_operations)
     int ret = goxel_core_init(&ctx);
     ASSERT_EQ(ret, 0);
     
-    ret = goxel_core_create_project(&ctx, "test_project");
+    ret = goxel_core_create_project(&ctx, "test_project", 64, 64, 64);
     ASSERT_EQ(ret, 0);
     
     // Add a voxel
     uint8_t red_color[4] = {255, 0, 0, 255};
-    ret = goxel_core_add_voxel(&ctx, 0, 0, 0, red_color);
+    ret = goxel_core_add_voxel(&ctx, 0, 0, 0, red_color, 0);
     ASSERT_EQ(ret, 0);
     
     // Check the voxel
@@ -128,7 +129,7 @@ TEST(voxel_operations)
     ASSERT_EQ(retrieved_color[3], 255); // Alpha
     
     // Remove the voxel
-    ret = goxel_core_remove_voxel(&ctx, 0, 0, 0);
+    ret = goxel_core_remove_voxel(&ctx, 0, 0, 0, 0);
     ASSERT_EQ(ret, 0);
     
     // Check it's removed (should be transparent)
@@ -149,7 +150,7 @@ TEST(project_management)
     ASSERT_EQ(ret, 0);
     
     // Test creating projects
-    ret = goxel_core_create_project(&ctx, "test_project_1");
+    ret = goxel_core_create_project(&ctx, "test_project_1", 32, 32, 32);
     ASSERT_EQ(ret, 0);
     
     // Test resetting to new project
@@ -167,7 +168,7 @@ TEST(volume_direct_operations)
     ASSERT(vol != NULL);
     
     // Test basic volume operations
-    float pos[3] = {1.0f, 2.0f, 3.0f};
+    int pos[3] = {1, 2, 3};
     uint8_t color[4] = {128, 64, 32, 255};
     
     volume_set_at(vol, NULL, pos, color);

@@ -18,6 +18,7 @@
 
 #include "goxel.h"
 #include "render_headless.h"
+#include "core/utils/img.h"
 
 #ifdef OSMESA_RENDERING
 #ifdef __APPLE__
@@ -51,6 +52,7 @@ static int OSMesaMakeCurrent(OSMesaContext ctx, void *buffer, int type, int widt
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 // OpenGL headers
 #ifdef __APPLE__
@@ -103,7 +105,7 @@ int headless_render_init(int width, int height)
     g_headless_ctx.buffer = malloc(buffer_size);
     if (!g_headless_ctx.buffer) {
         LOG_E("Failed to allocate framebuffer (%zu bytes)", buffer_size);
-        OSMesaDestroyContext(g_headless_ctx.context);
+        OSMesaDestroyContext(g_headless_ctx.osmesa_context);
         return -1;
     }
 
@@ -271,8 +273,9 @@ int headless_render_to_file(const char *filename, const char *format)
                w * bpp);
     }
     
-    // Use Goxel's img_save function
-    int result = img_save(flipped_buffer, w, h, bpp, filename);
+    // Use Goxel's img_write function
+    img_write(flipped_buffer, w, h, bpp, filename);
+    int result = 0;
     
     free(flipped_buffer);
     

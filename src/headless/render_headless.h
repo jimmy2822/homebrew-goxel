@@ -138,8 +138,8 @@ OSMesaContext headless_render_create_context(void);
 // Forward declarations for Goxel types - use existing includes
 #include "../core/image.h"
 #include "../camera.h"
-#include "../core/layer.h"
-#include "../core/volume.h"
+#include "../core/layer.h" 
+#include "../volume.h"
 #include "../core/material.h"
 
 /*
