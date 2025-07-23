@@ -513,14 +513,106 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     return 0;
 }
 
+// Helper function to validate export format
+static int validate_export_format(const char *output_file, const char *format, char *error_msg, size_t error_msg_size)
+{
+    if (!output_file) {
+        snprintf(error_msg, error_msg_size, "Output file not specified");
+        return -1;
+    }
+    
+    const file_format_t *file_format = file_format_get(output_file, format, "w");
+    if (!file_format) {
+        // List available formats dynamically for better error message
+        char format_list[512];
+        if (goxel_core_list_export_formats(format_list, sizeof(format_list)) == 0) {
+            snprintf(error_msg, error_msg_size, 
+                    "Unsupported format. Supported formats: %s", format_list);
+        } else {
+            snprintf(error_msg, error_msg_size, "Unsupported format for file: %s", output_file);
+        }
+        return -1;
+    }
+    
+    if (!file_format->export_func) {
+        snprintf(error_msg, error_msg_size, "Format %s does not support export", file_format->name);
+        return -1;
+    }
+    
+    return 0;
+}
+
 // Export operations  
 int goxel_core_export_project(goxel_core_context_t *ctx, const char *output_file, const char *format)
 {
-    if (!ctx || !output_file) return -1;
+    if (!ctx || !ctx->image) {
+        LOG_E("Invalid context or image for export");
+        return -1;
+    }
     
-    // Use existing file format system
-    // For now, just save as .gox format or auto-detect from extension
-    return goxel_core_save_project(ctx, output_file);
+    // Validate format before attempting export
+    char error_msg[256];
+    if (validate_export_format(output_file, format, error_msg, sizeof(error_msg)) != 0) {
+        LOG_E("Export validation failed: %s", error_msg);
+        return -1;
+    }
+    
+    // Find the appropriate file format
+    const file_format_t *file_format = file_format_get(output_file, format, "w");
+    assert(file_format); // Should be guaranteed by validation
+    assert(file_format->export_func); // Should be guaranteed by validation
+    
+    LOG_I("Exporting project to %s using format: %s", output_file, file_format->name);
+    
+    // Use the format's export function
+    int result = file_format->export_func(file_format, ctx->image, output_file);
+    if (result != 0) {
+        LOG_E("Export failed for format: %s (error code: %d)", file_format->name, result);
+        return -1;
+    }
+    
+    LOG_I("Export completed successfully to %s", output_file);
+    return 0;
+}
+
+// Helper function to collect format names
+static void collect_format_name(void *user, file_format_t *format)
+{
+    char **buffer_ptr = (char**)user;
+    char *buffer = *buffer_ptr;
+    size_t current_len = strlen(buffer);
+    
+    // Add format name and extensions
+    if (current_len > 0) {
+        strcat(buffer, ", ");
+    }
+    strcat(buffer, format->name);
+    
+    // Add primary extension if available
+    if (format->exts[0]) {
+        strcat(buffer, " (");
+        strcat(buffer, format->exts[0]);
+        strcat(buffer, ")");
+    }
+}
+
+int goxel_core_list_export_formats(char *buffer, size_t buffer_size)
+{
+    if (!buffer || buffer_size == 0) return -1;
+    
+    buffer[0] = '\0'; // Initialize empty string
+    char *buffer_ptr = buffer;
+    
+    // Use file_format_iter to collect all export formats
+    file_format_iter("w", &buffer_ptr, collect_format_name);
+    
+    // Ensure we don't exceed buffer size
+    if (strlen(buffer) >= buffer_size - 1) {
+        buffer[buffer_size - 1] = '\0';
+        return -1; // Buffer too small warning
+    }
+    
+    return 0;
 }
 
 // Scripting operations

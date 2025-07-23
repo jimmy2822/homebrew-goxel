@@ -118,6 +118,7 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
 
 // Export operations
 int goxel_core_export_project(goxel_core_context_t *ctx, const char *output_file, const char *format);
+int goxel_core_list_export_formats(char *buffer, size_t buffer_size);
 
 // Scripting operations
 int goxel_core_execute_script_file(goxel_core_context_t *ctx, const char *script_file);
