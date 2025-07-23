@@ -77,6 +77,9 @@ struct goxel_core {
     // File history
     char recent_files[8][1024];
     
+    // Read-only mode flag
+    bool read_only;
+    
 };
 
 // Core context management
@@ -95,6 +98,7 @@ int goxel_core_save_project(goxel_core_context_t *ctx, const char *path);
 int goxel_core_save_project_format(goxel_core_context_t *ctx, const char *path, const char *format);
 int goxel_core_create_backup(goxel_core_context_t *ctx, const char *path);
 void goxel_core_set_read_only(goxel_core_context_t *ctx, bool read_only);
+bool goxel_core_is_read_only(goxel_core_context_t *ctx);
 int goxel_core_get_project_bounds(goxel_core_context_t *ctx, int *width, int *height, int *depth);
 
 // Volume operations
@@ -113,8 +117,9 @@ int goxel_core_merge_layers(goxel_core_context_t *ctx, int source_id, int target
 int goxel_core_set_layer_visibility(goxel_core_context_t *ctx, int layer_id, const char *name, int visible);
 int goxel_core_rename_layer(goxel_core_context_t *ctx, int layer_id, const char *old_name, const char *new_name);
 
-// Rendering operations
+// Rendering operations  
 int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset);
+int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height, const char *camera_preset, void **buffer, size_t *buffer_size, const char *format);
 
 // Export operations
 int goxel_core_export_project(goxel_core_context_t *ctx, const char *output_file, const char *format);

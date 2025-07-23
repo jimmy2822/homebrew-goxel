@@ -936,6 +936,13 @@ int script_run_from_file(const char *filename, int argc, const char **argv)
     return ret;
 }
 
+int script_run_from_string(const char *script_code, const char *source_name)
+{
+    if (!script_code) return -1;
+    const char *name = source_name ? source_name : "<inline>";
+    return script_run_from_str(script_code, strlen(script_code), name, 0, NULL);
+}
+
 static int on_script(int i, const char *path, void *user)
 {
     const char *data;

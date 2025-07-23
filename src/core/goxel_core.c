@@ -20,13 +20,29 @@
 #include "../goxel.h"  // For function prototypes and constants
 #include "../headless/render_headless.h"  // For headless rendering functions
 #include "file_format.h"  // For file format handling
+#include "../script.h"  // For script execution functions
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>  // For close() and unlink()
+#include <stdlib.h>  // For mkstemp()
+
+// Helper function to check read-only mode
+static int check_read_only(goxel_core_context_t *ctx, const char *operation)
+{
+    if (ctx && ctx->read_only) {
+        LOG_E("Operation '%s' denied - context is in read-only mode", operation);
+        return -1;
+    }
+    return 0;
+}
 
 goxel_core_context_t *goxel_core_create_context(void)
 {
     goxel_core_context_t *ctx = calloc(1, sizeof(goxel_core_context_t));
+    if (ctx) {
+        ctx->read_only = false;  // Default to writable mode
+    }
     return ctx;
 }
 
@@ -100,6 +116,7 @@ void goxel_core_reset(goxel_core_context_t *ctx)
 int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int width, int height, int depth)
 {
     if (!ctx) return -1;
+    if (check_read_only(ctx, "create project") != 0) return -1;
     
     if (ctx->image) {
         image_delete(ctx->image);
@@ -141,6 +158,7 @@ int goxel_core_load_project(goxel_core_context_t *ctx, const char *path)
 int goxel_core_save_project(goxel_core_context_t *ctx, const char *path)
 {
     if (!ctx || !path || !ctx->image) return -1;
+    if (check_read_only(ctx, "save project") != 0) return -1;
     
     LOG_D("Saving project to: %s", path);
     
@@ -254,6 +272,7 @@ int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name, uint8_t
 int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id, const char *name)
 {
     if (!ctx || !ctx->image) return -1;
+    if (check_read_only(ctx, "delete layer") != 0) return -1;
     
     layer_t *layer = NULL;
     
@@ -277,6 +296,7 @@ int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id, const char 
 int goxel_core_merge_layers(goxel_core_context_t *ctx, int source_id, int target_id, const char *source_name, const char *target_name)
 {
     if (!ctx || !ctx->image) return -1;
+    if (check_read_only(ctx, "merge layers") != 0) return -1;
     
     layer_t *source_layer = NULL;
     layer_t *target_layer = NULL;
@@ -456,8 +476,13 @@ void goxel_core_set_read_only(goxel_core_context_t *ctx, bool read_only)
 {
     if (!ctx) return;
     
-    // For now, store this in a simple flag - would need to be added to goxel_core struct
-    // This is a placeholder implementation
+    ctx->read_only = read_only;
+    LOG_I("Read-only mode %s", read_only ? "enabled" : "disabled");
+}
+
+bool goxel_core_is_read_only(goxel_core_context_t *ctx)
+{
+    return ctx ? ctx->read_only : false;
 }
 
 // Rendering operations
@@ -510,6 +535,113 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     }
     
     LOG_I("Successfully rendered scene to %s", output_file);
+    return 0;
+}
+
+int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height, const char *camera_preset, void **buffer, size_t *buffer_size, const char *format)
+{
+    if (!ctx || !ctx->image || !buffer || !buffer_size) return -1;
+    
+    LOG_I("Rendering scene to buffer: %dx%d format=%s", width, height, format ? format : "png");
+    
+    // Resize headless rendering buffer if needed
+    if (headless_render_resize(width, height) != 0) {
+        LOG_E("Failed to resize headless render buffer");
+        return -1;
+    }
+    
+    // Use the active camera or create a default one
+    camera_t *camera = ctx->image->active_camera;
+    bool temp_camera = false;
+    if (!camera) {
+        // Create a temporary camera for rendering
+        camera = camera_new("temp_camera");
+        if (!camera) {
+            LOG_E("Failed to create temporary camera");
+            return -1;
+        }
+        temp_camera = true;
+        
+        // Set up camera to view the scene
+        camera_fit_box(camera, ctx->image->box);
+    }
+    
+    // Set up background color (light gray)
+    uint8_t background_color[4] = {240, 240, 240, 255};
+    
+    // Render the scene using headless rendering
+    int render_result = headless_render_scene_with_camera(ctx->image, camera, background_color);
+    
+    // Clean up temporary camera if we created one
+    if (temp_camera) {
+        camera_delete(camera);
+    }
+    
+    if (render_result != 0) {
+        LOG_E("Failed to render scene to buffer");
+        return -1;
+    }
+    
+    // Get the rendered framebuffer data
+    int fb_width, fb_height, bpp;
+    void *fb_buffer = headless_render_get_buffer(&fb_width, &fb_height, &bpp);
+    if (!fb_buffer) {
+        LOG_E("Failed to get framebuffer data");
+        return -1;
+    }
+    
+    // For now, we'll still encode to PNG format since that's what the API expects
+    // In the future, we could return raw RGBA data if format is "raw"
+    
+    // Create temporary file for PNG encoding (we'll eliminate this in a future improvement)
+    char temp_path[] = "/tmp/goxel_buffer_encode_XXXXXX";
+    int fd = mkstemp(temp_path);
+    if (fd == -1) {
+        LOG_E("Failed to create temp file for buffer encoding");
+        return -1;
+    }
+    close(fd);
+    
+    // Save framebuffer to temporary PNG file
+    if (headless_render_to_file(temp_path, format) != 0) {
+        LOG_E("Failed to encode framebuffer to format");
+        unlink(temp_path);
+        return -1;
+    }
+    
+    // Read the encoded file into memory buffer
+    FILE *file = fopen(temp_path, "rb");
+    if (!file) {
+        LOG_E("Failed to open encoded temp file");
+        unlink(temp_path);
+        return -1;
+    }
+    
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    *buffer = malloc(size);
+    if (!*buffer) {
+        LOG_E("Failed to allocate buffer for encoded data");
+        fclose(file);
+        unlink(temp_path);
+        return -1;
+    }
+    
+    size_t bytes_read = fread(*buffer, 1, size, file);
+    fclose(file);
+    unlink(temp_path);
+    
+    if (bytes_read != (size_t)size) {
+        LOG_E("Failed to read complete encoded data");
+        free(*buffer);
+        *buffer = NULL;
+        return -1;
+    }
+    
+    *buffer_size = size;
+    LOG_I("Successfully rendered scene to buffer (%zu bytes)", size);
     return 0;
 }
 
@@ -619,33 +751,94 @@ int goxel_core_list_export_formats(char *buffer, size_t buffer_size)
 int goxel_core_execute_script_file(goxel_core_context_t *ctx, const char *script_file)
 {
     if (!ctx || !script_file) return -1;
+    if (check_read_only(ctx, "execute script") != 0) return -1;
     
-    // Placeholder - would need to integrate with existing QuickJS script system
-    // This would load and execute a JavaScript file
+    LOG_I("Executing script file: %s", script_file);
     
-    return 0; // Success for now  
+    // Make sure the global goxel.image is set to our context's image
+    // This allows scripts to operate on the current project
+    image_t *original_image = goxel.image;
+    goxel.image = ctx->image;
+    
+    // Execute the script using the existing QuickJS system
+    int result = script_run_from_file(script_file, 0, NULL);
+    if (result != 0) {
+        LOG_E("Script execution failed with code: %d", result);
+        // Restore original image even on failure
+        goxel.image = original_image;
+        return result;
+    }
+    
+    // Keep any changes made by the script to our context
+    // (The script may have modified goxel.image, so we keep it)
+    ctx->image = goxel.image;
+    
+    // Restore original global state 
+    goxel.image = original_image;
+    
+    LOG_I("Script executed successfully: %s", script_file);
+    return 0;
 }
 
 int goxel_core_execute_script(goxel_core_context_t *ctx, const char *script_code)
 {
     if (!ctx || !script_code) return -1;
+    if (check_read_only(ctx, "execute script") != 0) return -1;
     
-    // Placeholder - would need to integrate with existing QuickJS script system
-    // This would execute inline JavaScript code
+    LOG_I("Executing inline script code");
     
-    return 0; // Success for now
+    // Make sure the global goxel.image is set to our context's image
+    // This allows scripts to operate on the current project
+    image_t *original_image = goxel.image;
+    goxel.image = ctx->image;
+    
+    // Execute the script using the new inline script function
+    int result = script_run_from_string(script_code, "<inline-script>");
+    if (result != 0) {
+        LOG_E("Inline script execution failed with code: %d", result);
+        // Restore original image even on failure
+        goxel.image = original_image;
+        return result;
+    }
+    
+    // Keep any changes made by the script to our context
+    // (The script may have modified goxel.image, so we keep it)
+    ctx->image = goxel.image;
+    
+    // Restore original global state 
+    goxel.image = original_image;
+    
+    LOG_I("Inline script executed successfully");
+    return 0;
 }
 
 int goxel_core_get_project_bounds(goxel_core_context_t *ctx, int *width, int *height, int *depth)
 {
     if (!ctx || !ctx->image) return -1;
     
-    // For now, return default bounds - would need proper bbox calculation
-    if (width) *width = 256;
-    if (height) *height = 256; 
-    if (depth) *depth = 256;
+    // Check if the image box is null (empty project)
+    if (box_is_null(ctx->image->box)) {
+        if (width) *width = 0;
+        if (height) *height = 0;
+        if (depth) *depth = 0;
+        return 0;
+    }
     
-    return -1;
+    // Convert the image box to axis-aligned bounding box coordinates
+    int aabb[2][3];
+    bbox_to_aabb(ctx->image->box, aabb);
+    
+    // Calculate dimensions from min/max coordinates
+    // aabb[0] = min coordinates, aabb[1] = max coordinates
+    if (width) *width = aabb[1][0] - aabb[0][0];
+    if (height) *height = aabb[1][1] - aabb[0][1]; 
+    if (depth) *depth = aabb[1][2] - aabb[0][2];
+    
+    LOG_D("Project bounds: %dx%dx%d (from box min:[%d,%d,%d] max:[%d,%d,%d])",
+          width ? *width : 0, height ? *height : 0, depth ? *depth : 0,
+          aabb[0][0], aabb[0][1], aabb[0][2], aabb[1][0], aabb[1][1], aabb[1][2]);
+    
+    return 0;
 }
 
 int goxel_core_remove_voxels_in_box(goxel_core_context_t *ctx, int x1, int y1, int z1, int x2, int y2, int z2, int layer_id)

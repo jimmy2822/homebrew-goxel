@@ -734,63 +734,14 @@ goxel_error_t goxel_render_to_buffer(goxel_context_t *ctx, uint8_t **buffer,
     const char *camera_str = camera_preset_to_string(options->camera);
     const char *format_str = render_format_to_string(options->format);
     
-    // Use the core render function which handles camera setup properly
-    // First render to temp file, then read into buffer (temporary approach)
-    char temp_path[] = "/tmp/goxel_render_direct_XXXXXX";
-    int fd = mkstemp(temp_path);
-    if (fd == -1) {
-        set_last_error(ctx, "Failed to create temporary file for direct rendering");
-        pthread_mutex_unlock(&ctx->mutex);
-        return GOXEL_ERROR_RENDER_FAILED;
-    }
-    close(fd);
-    
-    // Use core render function to properly handle camera and rendering
-    int result = goxel_core_render_to_file(ctx->core, temp_path, 
-                                          options->width, options->height,
-                                          format_str, options->quality, camera_str);
+    // Use the new core render-to-buffer function (eliminates temp file workaround)
+    int result = goxel_core_render_to_buffer(ctx->core, options->width, options->height,
+                                           camera_str, (void**)buffer, buffer_size, format_str);
     if (result != 0) {
-        set_last_error(ctx, "Failed to render to temp file: %d", result);
-        unlink(temp_path);
+        set_last_error(ctx, "Failed to render to buffer: %d", result);
         pthread_mutex_unlock(&ctx->mutex);
         return GOXEL_ERROR_RENDER_FAILED;
     }
-    
-    // Read the file into memory buffer
-    FILE *file = fopen(temp_path, "rb");
-    if (!file) {
-        set_last_error(ctx, "Failed to open rendered temp file");
-        unlink(temp_path);
-        pthread_mutex_unlock(&ctx->mutex);
-        return GOXEL_ERROR_FILE_ACCESS;
-    }
-    
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    
-    *buffer = malloc(size);
-    if (!*buffer) {
-        set_last_error(ctx, "Failed to allocate buffer for direct rendering");
-        fclose(file);
-        unlink(temp_path);
-        pthread_mutex_unlock(&ctx->mutex);
-        return GOXEL_ERROR_OUT_OF_MEMORY;
-    }
-    
-    size_t read_size = fread(*buffer, 1, size, file);
-    fclose(file);
-    unlink(temp_path);
-    
-    if (read_size != (size_t)size) {
-        set_last_error(ctx, "Failed to read complete rendered data");
-        free(*buffer);
-        *buffer = NULL;
-        pthread_mutex_unlock(&ctx->mutex);
-        return GOXEL_ERROR_FILE_ACCESS;
-    }
-    
-    *buffer_size = size;
     
     pthread_mutex_unlock(&ctx->mutex);
     return GOXEL_SUCCESS;

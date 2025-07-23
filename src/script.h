@@ -20,10 +20,16 @@
 #define SCRIPT_H
 
 /*
- * Function: script_run
- * Run a lua script from a file.
+ * Function: script_run_from_file
+ * Run a JavaScript script from a file.
  */
 int script_run_from_file(const char *filename, int argc, const char **argv);
+
+/*
+ * Function: script_run_from_string
+ * Run JavaScript code from a string.
+ */
+int script_run_from_string(const char *script_code, const char *source_name);
 
 void script_init(void);
 
