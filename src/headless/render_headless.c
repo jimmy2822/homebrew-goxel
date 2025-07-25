@@ -127,8 +127,14 @@ int headless_render_init(int width, int height)
     g_headless_ctx.backend = 2; // Software fallback
     g_headless_ctx.initialized = true;
     
-    // Initialize buffer to a default color (transparent black)
-    memset(g_headless_ctx.buffer, 0, buffer_size);
+    // Initialize buffer with test pattern for software fallback
+    uint8_t *buf = (uint8_t*)g_headless_ctx.buffer;
+    for (int i = 0; i < width * height; i++) {
+        buf[i * 4 + 0] = 128; // R
+        buf[i * 4 + 1] = 128; // G  
+        buf[i * 4 + 2] = 128; // B
+        buf[i * 4 + 3] = 255; // A
+    }
     
     LOG_I("Headless rendering initialized (software fallback): %dx%d", width, height);
     LOG_W("OSMesa not available - rendering will use software fallback");
@@ -230,7 +236,6 @@ int headless_render_scene(void)
 
 int headless_render_to_file(const char *filename, const char *format)
 {
-#ifdef OSMESA_RENDERING
     if (!g_headless_ctx.initialized || !g_headless_ctx.buffer) {
         LOG_E("Headless render not initialized or no buffer available");
         return -1;
@@ -275,10 +280,6 @@ int headless_render_to_file(const char *filename, const char *format)
     
     LOG_I("Successfully saved rendered image to: %s", filename);
     return 0;
-#else
-    LOG_E("OSMesa not available - cannot save to file");
-    return -1;
-#endif
 }
 
 void *headless_render_get_buffer(int *width, int *height, int *bpp)
@@ -299,7 +300,7 @@ bool headless_render_is_initialized(void)
     return g_headless_ctx.initialized;
 }
 
-#ifdef OSMESA_RENDERING
+#ifdef HAVE_OSMESA
 OSMesaContext headless_render_create_context(void)
 {
     return OSMesaCreateContext(OSMESA_RGBA, NULL);
@@ -313,6 +314,8 @@ OSMesaContext headless_render_create_context(void)
 int headless_render_scene_with_camera(const image_t *image, const camera_t *camera,
                                     const uint8_t background_color[4])
 {
+    LOG_I("headless_render_scene_with_camera: Starting...");
+    
     if (!g_headless_ctx.initialized) {
         LOG_E("Headless render not initialized");
         return -1;
@@ -323,10 +326,91 @@ int headless_render_scene_with_camera(const image_t *image, const camera_t *came
         return -1;
     }
 
+    LOG_I("headless_render_scene_with_camera: Backend = %d", g_headless_ctx.backend);
+    
+    // For software fallback mode, render voxels as simple 2D projection
+    if (g_headless_ctx.backend == 2) {
+        LOG_I("Software fallback mode - rendering voxels as 2D projection");
+        uint8_t *buf = (uint8_t*)g_headless_ctx.buffer;
+        int w = g_headless_ctx.width;
+        int h = g_headless_ctx.height;
+        
+        // Clear background to light gray
+        uint8_t bg_color[4] = {240, 240, 240, 255};
+        if (background_color) {
+            memcpy(bg_color, background_color, 4);
+        }
+        
+        for (int i = 0; i < w * h; i++) {
+            buf[i * 4 + 0] = bg_color[0];
+            buf[i * 4 + 1] = bg_color[1];
+            buf[i * 4 + 2] = bg_color[2];
+            buf[i * 4 + 3] = bg_color[3];
+        }
+        
+        // Simple voxel rendering: iterate through all visible layers and voxels
+        const layer_t *layer;
+        int voxel_count = 0;
+        
+        for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
+            if (!layer->visible || !layer->volume) continue;
+            
+            LOG_I("Rendering layer: %s", layer->name);
+            
+            // Simple voxel iteration - project each voxel to screen
+            int bbox[2][3];
+            volume_get_bbox(layer->volume, bbox, true);
+            
+            for (int z = bbox[0][2]; z < bbox[1][2]; z++) {
+                for (int y = bbox[0][1]; y < bbox[1][1]; y++) {
+                    for (int x = bbox[0][0]; x < bbox[1][0]; x++) {
+                        int pos[3] = {x, y, z};
+                        uint8_t voxel[4];
+                        volume_get_at(layer->volume, NULL, pos, voxel);
+                        if (voxel[3] > 0) {
+                            voxel_count++;
+                            
+                            // Simple orthogonal projection: X->screen_x, Z->screen_y (top-down view)
+                            // Center the projection and add some offset
+                            int center_x = (bbox[0][0] + bbox[1][0]) / 2;
+                            int center_z = (bbox[0][2] + bbox[1][2]) / 2;
+                            int screen_x = w/2 + (x - center_x) * 8;
+                            int screen_y = h/2 + (z - center_z) * 8;
+                            
+                            // Draw a 4x4 pixel square for each voxel
+                            for (int dy = 0; dy < 4; dy++) {
+                                for (int dx = 0; dx < 4; dx++) {
+                                    int px = screen_x + dx;
+                                    int py = screen_y + dy;
+                                    
+                                    if (px >= 0 && px < w && py >= 0 && py < h) {
+                                        int idx = (py * w + px) * 4;
+                                        buf[idx + 0] = voxel[0]; // R
+                                        buf[idx + 1] = voxel[1]; // G
+                                        buf[idx + 2] = voxel[2]; // B
+                                        buf[idx + 3] = 255;     // A
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        LOG_I("Software fallback rendered %d voxels", voxel_count);
+        return 0;
+    }
+
+    LOG_I("OSMesa mode - attempting OpenGL rendering");
+    
     // Prepare headless rendering setup
+    LOG_I("Calling headless_render_scene...");
     if (headless_render_scene() != 0) {
+        LOG_E("headless_render_scene failed");
         return -1;
     }
+    LOG_I("headless_render_scene completed");
 
     // Set up viewport
     float viewport[4] = {0, 0, g_headless_ctx.width, g_headless_ctx.height};
@@ -347,9 +431,11 @@ int headless_render_scene_with_camera(const image_t *image, const camera_t *came
     mat4_copy(cam->proj_mat, rend.proj_mat);
 
     // Render all visible layers
+    LOG_I("Getting render layers...");
     const layer_t *layer;
     for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
         if (layer->visible && layer->volume) {
+            LOG_I("Rendering layer...");
             render_volume(&rend, layer->volume, layer->material, 0);
         }
     }
@@ -360,7 +446,9 @@ int headless_render_scene_with_camera(const image_t *image, const camera_t *came
         memcpy(clear_color, background_color, 4);
     }
     
+    LOG_I("Submitting render...");
     render_submit(&rend, viewport, clear_color);
+    LOG_I("Render submitted");
 
     return 0;
 }

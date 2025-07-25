@@ -558,7 +558,9 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     uint8_t background_color[4] = {240, 240, 240, 255};
     
     // Render the scene using headless rendering
+    LOG_I("About to call headless_render_scene_with_camera...");
     int render_result = headless_render_scene_with_camera(ctx->image, camera, background_color);
+    LOG_I("headless_render_scene_with_camera returned: %d", render_result);
     
     // Clean up temporary camera if we created one
     if (camera != ctx->image->active_camera) {
@@ -571,10 +573,12 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     }
     
     // Save the rendered result to file
+    LOG_I("About to call headless_render_to_file...");
     if (headless_render_to_file(output_file, format) != 0) {
         LOG_E("Failed to save rendered image to file");
         return -1;
     }
+    LOG_I("headless_render_to_file completed successfully");
     
     LOG_I("Successfully rendered scene to %s", output_file);
     return 0;
