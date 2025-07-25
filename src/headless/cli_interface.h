@@ -150,4 +150,10 @@ void cli_set_goxel_context(cli_context_t *ctx, void *goxel_context);
 
 cli_result_t cli_register_builtin_commands(cli_context_t *ctx);
 
+// Interactive mode functions
+cli_result_t cli_run_interactive(cli_context_t *ctx);
+cli_result_t cli_execute_line(cli_context_t *ctx, const char *line);
+char **cli_tokenize_line(const char *line, int *argc);
+void cli_free_tokens(char **tokens, int argc);
+
 #endif // CLI_INTERFACE_H

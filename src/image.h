@@ -63,6 +63,7 @@ struct image {
 };
 
 image_t *image_new(void);
+image_t *image_new_empty(void);
 void image_delete(image_t *img);
 layer_t *image_add_layer(image_t *img, layer_t *layer);
 void image_delete_layer(image_t *img, layer_t *layer);

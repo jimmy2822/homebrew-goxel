@@ -146,7 +146,6 @@ void image_update(image_t *img)
 
 image_t *image_new(void)
 {
-    layer_t *layer;
     image_t *img = calloc(1, sizeof(*img));
     img->ref = 1;
     const int aabb[2][3] = {{-16, -16, 0}, {16, 16, 32}};
@@ -155,12 +154,31 @@ image_t *image_new(void)
     img->export_height = 1024;
     image_add_material(img, NULL);
     image_add_camera(img, NULL);
-    layer = image_add_layer(img, NULL);
-    layer->visible = true;
-    layer->id = img_get_new_id(img);
-    layer->material = img->active_material;
-    DL_APPEND(img->layers, layer);
-    img->active_layer = layer;
+    image_add_layer(img, NULL);
+    // image_add_layer already sets visible, id, material, appends to list and sets as active
+    
+    // Set ambient light to 1.0 for new projects to prevent dark voxel display
+    extern goxel_t goxel;
+    goxel.rend.settings.ambient = 1.0f;
+    
+    // Prevent saving an empty image.
+    img->saved_key = image_get_key(img);
+    image_history_push(img);
+    return img;
+}
+
+// Create an empty image without default layer - used for file loading
+image_t *image_new_empty(void)
+{
+    image_t *img = calloc(1, sizeof(*img));
+    img->ref = 1;
+    const int aabb[2][3] = {{-16, -16, 0}, {16, 16, 32}};
+    bbox_from_aabb(img->box, aabb);
+    img->export_width = 1024;
+    img->export_height = 1024;
+    // Only add material and camera, but no default layer
+    image_add_material(img, NULL);
+    image_add_camera(img, NULL);
     // Prevent saving an empty image.
     img->saved_key = image_get_key(img);
     image_history_push(img);
@@ -198,7 +216,8 @@ static void image_restore(image_t *img, const image_t *snap)
         if (snap_layer == snap->active_layer)
             img->active_layer = layer;
     }
-    assert(img->active_layer);
+    // Only assert if there are layers
+    if (img->layers) assert(img->active_layer);
 
     img->cameras = NULL;
     img->active_camera = NULL;
@@ -252,7 +271,8 @@ static image_t *image_snapshot(const image_t *other)
         if (other_layer == other->active_layer)
             img->active_layer = layer;
     }
-    assert(img->active_layer);
+    // Only assert if there are layers
+    if (img->layers) assert(img->active_layer);
 
     DL_FOREACH(other->cameras, other_camera) {
         camera = camera_copy(other_camera);
@@ -691,6 +711,7 @@ static void image_clear_layer(void)
     painter_t painter;
     image_t *img = goxel.image;
     layer_t *layer = img->active_layer;
+    if (!layer) return; // No active layer to clear
     if (    box_is_null(img->selection_box) &&
             volume_is_empty(img->selection_mask)) {
         volume_clear(layer->volume);
@@ -807,7 +828,8 @@ ACTION_REGISTER(ACTION_img_new_layer,
 
 static void a_image_delete_layer(void)
 {
-    image_delete_layer(goxel.image, goxel.image->active_layer);
+    if (goxel.image->active_layer)
+        image_delete_layer(goxel.image, goxel.image->active_layer);
 }
 
 ACTION_REGISTER(ACTION_img_del_layer,
@@ -818,12 +840,14 @@ ACTION_REGISTER(ACTION_img_del_layer,
 
 static void a_image_move_layer_up(void)
 {
-    image_move_layer(goxel.image, goxel.image->active_layer, +1);
+    if (goxel.image->active_layer)
+        image_move_layer(goxel.image, goxel.image->active_layer, +1);
 }
 
 static void a_image_move_layer_down(void)
 {
-    image_move_layer(goxel.image, goxel.image->active_layer, -1);
+    if (goxel.image->active_layer)
+        image_move_layer(goxel.image, goxel.image->active_layer, -1);
 }
 
 
@@ -841,7 +865,8 @@ ACTION_REGISTER(ACTION_img_move_layer_down,
 
 static void a_image_duplicate_layer(void)
 {
-    image_duplicate_layer(goxel.image, goxel.image->active_layer);
+    if (goxel.image->active_layer)
+        image_duplicate_layer(goxel.image, goxel.image->active_layer);
 }
 
 ACTION_REGISTER(ACTION_img_duplicate_layer,
@@ -851,7 +876,8 @@ ACTION_REGISTER(ACTION_img_duplicate_layer,
 
 static void a_image_clone_layer(void)
 {
-    image_clone_layer(goxel.image, goxel.image->active_layer);
+    if (goxel.image->active_layer)
+        image_clone_layer(goxel.image, goxel.image->active_layer);
 }
 
 ACTION_REGISTER(ACTION_img_clone_layer,
@@ -862,7 +888,8 @@ ACTION_REGISTER(ACTION_img_clone_layer,
 
 static void a_image_unclone_layer(void)
 {
-    image_unclone_layer(goxel.image, goxel.image->active_layer);
+    if (goxel.image->active_layer)
+        image_unclone_layer(goxel.image, goxel.image->active_layer);
 }
 
 ACTION_REGISTER(ACTION_img_unclone_layer,
@@ -874,7 +901,8 @@ ACTION_REGISTER(ACTION_img_unclone_layer,
 static void a_img_select_parent_layer(void)
 {
     image_t *image = goxel.image;
-    image->active_layer = img_get_layer(image, image->active_layer->base_id);
+    if (image->active_layer)
+        image->active_layer = img_get_layer(image, image->active_layer->base_id);
 }
 
 
@@ -895,7 +923,8 @@ ACTION_REGISTER(ACTION_img_merge_visible_layers,
 
 static void a_img_merge_layer_down(void)
 {
-    image_merge_layer_down(goxel.image, goxel.image->active_layer);
+    if (goxel.image->active_layer)
+        image_merge_layer_down(goxel.image, goxel.image->active_layer);
 }
 
 ACTION_REGISTER(ACTION_img_merge_layer_down,
@@ -949,7 +978,8 @@ ACTION_REGISTER(ACTION_img_move_camera_down,
 
 static void a_img_image_layer_to_volume(void)
 {
-    image_image_layer_to_volume(goxel.image, goxel.image->active_layer);
+    if (goxel.image->active_layer)
+        image_image_layer_to_volume(goxel.image, goxel.image->active_layer);
 }
 
 ACTION_REGISTER(ACTION_img_image_layer_to_volume,

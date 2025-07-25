@@ -297,9 +297,13 @@ void save_to_file(const image_t *img, const char *path)
 
     // Add all the blocks data into the hash table.
     index = 0;
+    int layer_count = 0;
     DL_FOREACH(img->layers, layer) {
+        layer_count++;
+        int block_count = 0;
         iter = volume_get_iterator(layer->volume, VOLUME_ITER_TILES);
         while (volume_iter(&iter, bpos)) {
+            block_count++;
             volume_get_tile_data(layer->volume, &iter, bpos, &uid);
             HASH_FIND(hh, blocks_table, &uid, sizeof(uid), data);
             if (data) continue;
@@ -310,6 +314,7 @@ void save_to_file(const image_t *img, const char *path)
             data->index = index++;
             HASH_ADD(hh, blocks_table, uid, sizeof(data->uid), data);
         }
+        LOG_I("DEBUG: Layer %d has %d blocks during save", layer_count, block_count);
     }
 
     // Write all the blocks chunks.
@@ -572,7 +577,11 @@ int load_from_file(const char *path, bool replace)
             free(png);
 
         } else if (strncmp(c.type, "LAYR", 4) == 0) {
-            layer = image_add_layer(goxel.image, NULL);
+            // Create a new layer, but don't assign ID yet - it will be read from file
+            layer = layer_new(NULL);
+            layer->visible = true;
+            layer->material = goxel.image->active_material;
+            
             nb_blocks = chunk_read_int32(&c, in, __LINE__);
             assert(nb_blocks >= 0);
             for (i = 0; i < nb_blocks; i++) {
@@ -622,6 +631,29 @@ int load_from_file(const char *path, bool replace)
                 if (DICT_CPY("material", material_idx))
                     layer->material = get_material(goxel.image, material_idx);
             }
+            
+            // If no ID was read from file, find the next available ID
+            if (layer->id == 0) {
+                int id;
+                layer_t *other;
+                for (id = 1;; id++) {
+                    bool found = false;
+                    DL_FOREACH(goxel.image->layers, other) {
+                        if (other != layer && other->id == id) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        layer->id = id;
+                        break;
+                    }
+                }
+            }
+            
+            // Add the layer to the image
+            DL_APPEND(goxel.image->layers, layer);
+            goxel.image->active_layer = layer;
         } else if (strncmp(c.type, "CAMR", 4) == 0) {
             camera = camera_new("unnamed");
             DL_APPEND(goxel.image->cameras, camera);

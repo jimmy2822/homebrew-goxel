@@ -46,11 +46,17 @@ cli_result_t cmd_convert(cli_context_t *ctx, cli_args_t *args);
 // Scripting commands
 cli_result_t cmd_script(cli_context_t *ctx, cli_args_t *args);
 
+// Built-in commands
+cli_result_t cmd_help(cli_context_t *ctx, cli_args_t *args);
+cli_result_t cmd_version(cli_context_t *ctx, cli_args_t *args);
+cli_result_t cmd_batch(cli_context_t *ctx, cli_args_t *args);
+
 cli_result_t register_project_commands(cli_context_t *ctx);
 cli_result_t register_voxel_commands(cli_context_t *ctx);
 cli_result_t register_layer_commands(cli_context_t *ctx);
 cli_result_t register_render_commands(cli_context_t *ctx);
 cli_result_t register_export_commands(cli_context_t *ctx);
 cli_result_t register_script_commands(cli_context_t *ctx);
+cli_result_t register_builtin_commands(cli_context_t *ctx);
 
 #endif // CLI_COMMANDS_H

@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>  // For getopt on POSIX systems
+#include <unistd.h>  // For getopt and isatty on POSIX systems
 
 static cli_context_t *g_cli_context = NULL;
 static goxel_core_context_t *g_goxel_context = NULL;
@@ -80,6 +80,12 @@ static int register_all_commands(cli_context_t *ctx)
         return -1;
     }
     
+    result = register_builtin_commands(ctx);
+    if (result != CLI_SUCCESS) {
+        fprintf(stderr, "Error registering builtin commands: %s\n", cli_error_string(result));
+        return -1;
+    }
+    
     return 0;
 }
 
@@ -122,6 +128,7 @@ int main(int argc, char **argv)
     
     bool verbose = false;
     bool quiet = false;
+    bool interactive = false;
     const char *config_file = NULL;
     
     // Process only global options before command name
@@ -141,6 +148,8 @@ int main(int argc, char **argv)
             verbose = true;
         } else if (strcmp(argv[i], "--quiet") == 0) {
             quiet = true;
+        } else if (strcmp(argv[i], "--interactive") == 0) {
+            interactive = true;
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             config_file = argv[i + 1];
             i++; // Skip the config file argument
@@ -158,14 +167,37 @@ int main(int argc, char **argv)
                 verbose = true;
             } else if (strcmp(argv[i], "--quiet") == 0) {
                 quiet = true;
+            } else if (strcmp(argv[i], "--interactive") == 0) {
+                interactive = true;
             }
         }
     }
     
     cli_set_global_options(g_cli_context, verbose, quiet, config_file);
     
-    printf("DEBUG: Set global options, argc=%d\n", argc);
+    printf("DEBUG: Set global options, argc=%d, interactive=%s\n", argc, interactive ? "true" : "false");
     fflush(stdout);
+    
+    // Handle interactive mode or stdin piping
+    if (interactive || (!isatty(STDIN_FILENO) && argc == 1)) {
+        if (argc == 1 && !quiet && isatty(STDIN_FILENO)) {
+            print_startup_info();
+        }
+        
+        cli_result_t result = cli_run_interactive(g_cli_context);
+        cleanup_goxel_context();
+        cli_destroy_context(g_cli_context);
+        return (result != CLI_SUCCESS) ? (int)result : 0;
+    }
+    
+    // Default interactive mode when no args
+    if (argc == 1 && !quiet && isatty(STDIN_FILENO)) {
+        print_startup_info();
+        cli_result_t result = cli_run_interactive(g_cli_context);
+        cleanup_goxel_context();
+        cli_destroy_context(g_cli_context);
+        return (result != CLI_SUCCESS) ? (int)result : 0;
+    }
     
     if (!quiet && argc == 1) {
         print_startup_info();

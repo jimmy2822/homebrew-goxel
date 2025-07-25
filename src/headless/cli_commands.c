@@ -256,45 +256,69 @@ cli_result_t cmd_voxel_add(cli_context_t *ctx, cli_args_t *args)
     printf("DEBUG: Goxel context retrieved successfully\n");
     fflush(stdout);
     
-    // Load project file or create new project if it doesn't exist
+    // Check if we need to load/create the project
     printf("DEBUG: Checking if project file exists...\n");
     fflush(stdout);
     
     FILE *test_file = fopen(project_file, "r");
+    bool file_exists = (test_file != NULL);
+    if (test_file) fclose(test_file);
     
-    printf("DEBUG: File check completed\n");
+    printf("DEBUG: File check completed - exists: %s\n", file_exists ? "yes" : "no");
     fflush(stdout);
-    if (test_file) {
-        fclose(test_file);
-        printf("DEBUG: File exists, loading project...\n");
+    
+    // Check if we already have this project loaded to avoid reloading
+    bool need_to_load = true;
+    if (goxel_ctx->image && goxel_ctx->image->path) {
+        const char *current_path = goxel_ctx->image->path;
+        printf("DEBUG: Current loaded project: %s\n", current_path);
+        printf("DEBUG: Target project: %s\n", project_file);
         fflush(stdout);
         
-        // File exists, try to load it
-        if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
-            fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
-            return CLI_ERROR_PROJECT_LOAD_FAILED;
+        // Compare absolute paths to see if it's the same project
+        if (strcmp(current_path, project_file) == 0) {
+            need_to_load = false;
+            printf("DEBUG: Same project already loaded, skipping reload\n");
+            fflush(stdout);
         }
-        
-        printf("DEBUG: Project loaded successfully\n");
-        fflush(stdout);
-    } else {
-        printf("DEBUG: File doesn't exist, creating new project...\n");
-        fflush(stdout);
-        
-        // File doesn't exist, create a new project
-        if (!ctx->quiet) {
-            printf("Creating new project: %s\n", project_file);
+    }
+    
+    if (need_to_load) {
+        if (file_exists) {
+            printf("DEBUG: File exists, loading project...\n");
+            fflush(stdout);
+            
+            // File exists, try to load it
+            if (goxel_core_load_project(goxel_ctx, project_file) != 0) {
+                fprintf(stderr, "Error: Failed to load project from '%s'\n", project_file);
+                return CLI_ERROR_PROJECT_LOAD_FAILED;
+            }
+            
+            printf("DEBUG: Project loaded successfully\n");
+            fflush(stdout);
+        } else {
+            printf("DEBUG: File doesn't exist, creating new project...\n");
+            fflush(stdout);
+            
+            // File doesn't exist, create a new project
+            if (!ctx->quiet) {
+                printf("Creating new project: %s\n", project_file);
+            }
+            if (goxel_core_create_project(goxel_ctx, project_file, 64, 64, 64) != 0) {
+                fprintf(stderr, "Error: Failed to create new project\n");
+                return CLI_ERROR_PROJECT_LOAD_FAILED;
+            }
+            
+            printf("DEBUG: New project created successfully\n");
+            fflush(stdout);
         }
-        if (goxel_core_create_project(goxel_ctx, project_file, 64, 64, 64) != 0) {
-            fprintf(stderr, "Error: Failed to create new project\n");
-            return CLI_ERROR_PROJECT_LOAD_FAILED;
-        }
-        
-        printf("DEBUG: New project created successfully\n");
-        fflush(stdout);
     }
     
     uint8_t color[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
+    
+    // Debug: Show layer state before adding voxel
+    printf("DEBUG: Layer state BEFORE adding voxel:\n");
+    goxel_core_debug_layers(goxel_ctx);
     
     printf("DEBUG: About to call goxel_core_add_voxel()...\n");
     fflush(stdout);
@@ -302,6 +326,10 @@ cli_result_t cmd_voxel_add(cli_context_t *ctx, cli_args_t *args)
         fprintf(stderr, "Error: Failed to add voxel\n");
         return CLI_ERROR_VOXEL_OPERATION_FAILED;
     }
+    
+    // Debug: Show layer state after adding voxel
+    printf("DEBUG: Layer state AFTER adding voxel:\n");
+    goxel_core_debug_layers(goxel_ctx);
     
     // Save project back
     if (goxel_core_save_project(goxel_ctx, project_file) != 0) {
@@ -1173,6 +1201,121 @@ cli_result_t cmd_script(cli_context_t *ctx, cli_args_t *args)
     if (!ctx->quiet) {
         printf("Script executed successfully\n");
     }
+    
+    return CLI_SUCCESS;
+}
+
+// Built-in commands
+cli_result_t cmd_help(cli_context_t *ctx, cli_args_t *args)
+{
+    if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
+    
+    if (cli_get_positional_count(args) > 0) {
+        // Help for specific command
+        const char *command_name = cli_get_positional_arg(args, 0);
+        cli_print_command_help(ctx, command_name);
+    } else {
+        // General help
+        cli_print_help(ctx);
+    }
+    
+    return CLI_SUCCESS;
+}
+
+cli_result_t cmd_version(cli_context_t *ctx, cli_args_t *args)
+{
+    (void)ctx;
+    (void)args;
+    
+    cli_print_version();
+    return CLI_SUCCESS;
+}
+
+// Batch operations command
+cli_result_t cmd_batch(cli_context_t *ctx, cli_args_t *args)
+{
+    if (!ctx || !args) return CLI_ERROR_INVALID_ARGS;
+    
+    const char *script_file = cli_get_option_string(args, "file", NULL);
+    
+    if (!script_file) {
+        if (cli_get_positional_count(args) > 0) {
+            script_file = cli_get_positional_arg(args, 0);
+        } else {
+            fprintf(stderr, "Error: Batch script file not specified\n");
+            return CLI_ERROR_INVALID_ARGS;
+        }
+    }
+    
+    if (!ctx->quiet) {
+        printf("Executing batch operations from: %s\n", script_file);
+    }
+    
+    FILE *file = fopen(script_file, "r");
+    if (!file) {
+        fprintf(stderr, "Error: Cannot open batch file '%s'\n", script_file);
+        return CLI_ERROR_FILE_NOT_FOUND;
+    }
+    
+    char line[1024];
+    int line_number = 0;
+    cli_result_t result = CLI_SUCCESS;
+    
+    while (fgets(line, sizeof(line), file)) {
+        line_number++;
+        
+        // Skip empty lines and comments
+        char *trimmed = line;
+        while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+        if (*trimmed == '\0' || *trimmed == '#' || *trimmed == '\n') {
+            continue;
+        }
+        
+        if (!ctx->quiet) {
+            printf("Line %d: %s", line_number, trimmed);
+        }
+        
+        result = cli_execute_line(ctx, line);
+        if (result != CLI_SUCCESS) {
+            fprintf(stderr, "Error at line %d: %s\n", line_number, cli_error_string(result));
+            break;
+        }
+    }
+    
+    fclose(file);
+    
+    if (result == CLI_SUCCESS && !ctx->quiet) {
+        printf("Batch operations completed successfully (%d lines processed)\n", line_number);
+    }
+    
+    return result;
+}
+
+cli_result_t register_builtin_commands(cli_context_t *ctx)
+{
+    if (!ctx) return CLI_ERROR_INVALID_ARGS;
+    
+    cli_result_t result;
+    
+    result = cli_register_command(ctx, "help",
+                                 "Show help information",
+                                 "[COMMAND]",
+                                 cmd_help);
+    if (result != CLI_SUCCESS) return result;
+    
+    result = cli_register_command(ctx, "version",
+                                 "Show version information",
+                                 "",
+                                 cmd_version);
+    if (result != CLI_SUCCESS) return result;
+    
+    result = cli_register_command(ctx, "batch",
+                                 "Execute batch operations from a script file",
+                                 "[OPTIONS] <script-file>",
+                                 cmd_batch);
+    if (result != CLI_SUCCESS) return result;
+    
+    cli_add_option(ctx, "batch", "f", "file", "Batch script file path", CLI_OPT_STRING, false);
     
     return CLI_SUCCESS;
 }

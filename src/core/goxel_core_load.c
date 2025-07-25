@@ -49,7 +49,8 @@ int goxel_core_load_project_impl(goxel_core_context_t *ctx, const char *path)
     }
     
     // Phase 2: Isolated GOX loading (avoid global sync during load)
-    image_t *temp_image = image_new();
+    // Use image_new_empty() to avoid creating default layer
+    image_t *temp_image = image_new_empty();
     if (!temp_image) {
         LOG_E("Failed to create temporary image for loading");
         return -1;

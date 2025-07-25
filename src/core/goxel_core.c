@@ -143,6 +143,10 @@ int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int w
     // Note: width, height, depth parameters are for initial project setup
     // In Goxel, projects can grow dynamically, so these are informational
     
+    // Set ambient light to 1.0 for new projects to prevent dark voxel display
+    extern goxel_t goxel;
+    goxel.rend.settings.ambient = 1.0f;
+    
     return 0;
 }
 
@@ -194,21 +198,59 @@ int goxel_core_add_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t
 {
     if (!ctx || !ctx->image) return -1;
     
-    layer_t *layer = (layer_id == 0 || layer_id == -1) ? ctx->image->active_layer : NULL;
+    layer_t *layer = NULL;
     
     // Find layer by ID if specified (positive IDs only)
     if (layer_id > 0) {
         for (layer = ctx->image->layers; layer; layer = layer->next) {
             if (layer->id == layer_id) break;
         }
+        // If specified layer not found, log warning and use active layer
+        if (!layer) {
+            LOG_W("Layer with ID %d not found, using active layer", layer_id);
+            layer = ctx->image->active_layer;
+        }
+    } else {
+        // layer_id <= 0 means use active layer
+        layer = ctx->image->active_layer;
     }
     
-    if (!layer) return -1;
+    // If still no layer (no active layer), create or use first layer
+    if (!layer) {
+        if (ctx->image->layers) {
+            layer = ctx->image->layers;
+            LOG_W("No active layer, using first layer (ID: %d)", layer->id);
+        } else {
+            LOG_E("No layers available in the image");
+            return -1;
+        }
+    }
+    
+    // Ensure layer has a material
+    if (!layer->material && ctx->image->materials) {
+        layer->material = ctx->image->active_material ? ctx->image->active_material : ctx->image->materials;
+        LOG_I("DEBUG: Assigned material '%s' to layer '%s'", layer->material->name, layer->name);
+    }
     
     int pos[3] = {x, y, z};
     uint8_t color[4] = {rgba[0], rgba[1], rgba[2], rgba[3]};
     
+    LOG_I("DEBUG: Adding voxel at (%d,%d,%d) with color (%d,%d,%d,%d) to layer %d", 
+          x, y, z, rgba[0], rgba[1], rgba[2], rgba[3], layer->id);
+    
+    // Check what's currently at this position
+    uint8_t existing[4];
+    volume_get_at(layer->volume, NULL, pos, existing);
+    LOG_I("DEBUG: Existing voxel at position: (%d,%d,%d,%d)", 
+          existing[0], existing[1], existing[2], existing[3]);
+    
     volume_set_at(layer->volume, NULL, pos, color);
+    
+    // Verify it was set
+    uint8_t verify[4];
+    volume_get_at(layer->volume, NULL, pos, verify);
+    LOG_I("DEBUG: After setting, voxel at position: (%d,%d,%d,%d)", 
+          verify[0], verify[1], verify[2], verify[3]);
     
     return 0;
 }
@@ -893,6 +935,152 @@ int goxel_core_paint_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8
     
     // Paint the voxel with new color
     return goxel_core_add_voxel(ctx, x, y, z, rgba, layer_id);
+}
+
+void goxel_core_debug_layers(goxel_core_context_t *ctx)
+{
+    if (!ctx || !ctx->image) {
+        LOG_E("No context or image available");
+        return;
+    }
+    
+    LOG_I("=== Layer Debug Info ===");
+    LOG_I("Active layer: %p", ctx->image->active_layer);
+    
+    int count = 0;
+    layer_t *layer;
+    DL_FOREACH(ctx->image->layers, layer) {
+        count++;
+        LOG_I("Layer %d: ID=%d, Name='%s', Visible=%d, Addr=%p", 
+              count, layer->id, layer->name, layer->visible, layer);
+        if (layer == ctx->image->active_layer) {
+            LOG_I("  ^ This is the active layer");
+        }
+        
+        // Count voxels in the layer
+        int voxel_count = 0;
+        volume_iterator_t iter = volume_get_iterator(layer->volume, VOLUME_ITER_VOXELS);
+        int pos[3];
+        uint8_t color[4];
+        while (volume_iter(&iter, pos)) {
+            volume_get_at(layer->volume, &iter, pos, color);
+            if (color[3] > 0) voxel_count++;
+        }
+        LOG_I("  Voxel count: %d", voxel_count);
+    }
+    LOG_I("Total layers: %d", count);
+    LOG_I("=======================");
+}
+
+int goxel_core_add_voxels_batch(goxel_core_context_t *ctx, const voxel_op_t *ops, int count)
+{
+    if (!ctx || !ctx->image || !ops || count <= 0) return -1;
+    if (check_read_only(ctx, "add voxels batch") != 0) return -1;
+    
+    int failed = 0;
+    layer_t *current_layer = NULL;
+    int current_layer_id = -999; // Invalid ID to force first lookup
+    
+    LOG_I("Starting batch add of %d voxels", count);
+    
+    for (int i = 0; i < count; i++) {
+        // Only look up layer if ID changed from previous operation
+        if (ops[i].layer_id != current_layer_id) {
+            current_layer_id = ops[i].layer_id;
+            current_layer = NULL;
+            
+            // Find layer by ID if specified (positive IDs only)
+            if (current_layer_id > 0) {
+                for (current_layer = ctx->image->layers; current_layer; current_layer = current_layer->next) {
+                    if (current_layer->id == current_layer_id) break;
+                }
+                if (!current_layer) {
+                    LOG_W("Batch op %d: Layer with ID %d not found, using active layer", i, current_layer_id);
+                    current_layer = ctx->image->active_layer;
+                }
+            } else {
+                // layer_id <= 0 means use active layer
+                current_layer = ctx->image->active_layer;
+            }
+            
+            // If still no layer, use first layer
+            if (!current_layer) {
+                if (ctx->image->layers) {
+                    current_layer = ctx->image->layers;
+                    LOG_W("Batch op %d: No active layer, using first layer (ID: %d)", i, current_layer->id);
+                } else {
+                    LOG_E("Batch op %d: No layers available in the image", i);
+                    failed++;
+                    continue;
+                }
+            }
+        }
+        
+        // Add voxel to current layer
+        int pos[3] = {ops[i].x, ops[i].y, ops[i].z};
+        uint8_t color[4];
+        memcpy(color, ops[i].rgba, 4);
+        
+        volume_set_at(current_layer->volume, NULL, pos, color);
+    }
+    
+    LOG_I("Batch add completed: %d succeeded, %d failed", count - failed, failed);
+    return failed > 0 ? -1 : 0;
+}
+
+int goxel_core_remove_voxels_batch(goxel_core_context_t *ctx, const voxel_op_t *ops, int count)
+{
+    if (!ctx || !ctx->image || !ops || count <= 0) return -1;
+    if (check_read_only(ctx, "remove voxels batch") != 0) return -1;
+    
+    int failed = 0;
+    layer_t *current_layer = NULL;
+    int current_layer_id = -999; // Invalid ID to force first lookup
+    
+    LOG_I("Starting batch remove of %d voxels", count);
+    
+    for (int i = 0; i < count; i++) {
+        // Only look up layer if ID changed from previous operation
+        if (ops[i].layer_id != current_layer_id) {
+            current_layer_id = ops[i].layer_id;
+            current_layer = NULL;
+            
+            // Find layer by ID if specified (positive IDs only)
+            if (current_layer_id > 0) {
+                for (current_layer = ctx->image->layers; current_layer; current_layer = current_layer->next) {
+                    if (current_layer->id == current_layer_id) break;
+                }
+                if (!current_layer) {
+                    LOG_W("Batch op %d: Layer with ID %d not found, using active layer", i, current_layer_id);
+                    current_layer = ctx->image->active_layer;
+                }
+            } else {
+                // layer_id <= 0 means use active layer
+                current_layer = ctx->image->active_layer;
+            }
+            
+            // If still no layer, use first layer
+            if (!current_layer) {
+                if (ctx->image->layers) {
+                    current_layer = ctx->image->layers;
+                    LOG_W("Batch op %d: No active layer, using first layer (ID: %d)", i, current_layer->id);
+                } else {
+                    LOG_E("Batch op %d: No layers available in the image", i);
+                    failed++;
+                    continue;
+                }
+            }
+        }
+        
+        // Remove voxel from current layer
+        int pos[3] = {ops[i].x, ops[i].y, ops[i].z};
+        uint8_t transparent[4] = {0, 0, 0, 0};
+        
+        volume_set_at(current_layer->volume, NULL, pos, transparent);
+    }
+    
+    LOG_I("Batch remove completed: %d succeeded, %d failed", count - failed, failed);
+    return failed > 0 ? -1 : 0;
 }
 
 int goxel_core_get_layer_count(goxel_core_context_t *ctx)

@@ -516,6 +516,10 @@ void cli_print_help(cli_context_t *ctx)
     
     printf("\nUse '%s COMMAND --help' for detailed information about each command.\n", ctx->program_name);
     printf("All commands support -h, --help options for usage information.\n");
+    
+    printf("\nNote: Coordinate System\n");
+    printf("  The GUI grid plane is at Y=-16 in CLI coordinates.\n");
+    printf("  To place objects on the grid, use Y=-16 (GUI shows this as Y=0).\n");
 }
 
 void cli_print_command_help(cli_context_t *ctx, const char *command_name)
@@ -570,6 +574,12 @@ void cli_print_command_help(cli_context_t *ctx, const char *command_name)
             opt = opt->next;
         }
         printf("\n");
+    }
+    
+    // Add coordinate note for voxel-related commands
+    if (strstr(command_name, "voxel") != NULL) {
+        printf("Coordinate Note:\n");
+        printf("  The GUI grid plane is at Y=-16. Use Y=-16 to place objects on the grid.\n\n");
     }
 }
 
@@ -628,4 +638,140 @@ cli_result_t cli_register_builtin_commands(cli_context_t *ctx)
     // This function is currently a placeholder for future expansion
     
     return CLI_SUCCESS;
+}
+
+// Interactive mode implementation
+char **cli_tokenize_line(const char *line, int *argc)
+{
+    if (!line || !argc) return NULL;
+    
+    char **tokens = malloc(64 * sizeof(char*));
+    if (!tokens) return NULL;
+    
+    char *line_copy = strdup(line);
+    if (!line_copy) {
+        free(tokens);
+        return NULL;
+    }
+    
+    *argc = 0;
+    char *token = strtok(line_copy, " \t\n\r");
+    while (token && *argc < 63) {
+        tokens[*argc] = strdup(token);
+        if (!tokens[*argc]) {
+            // Cleanup on error
+            for (int i = 0; i < *argc; i++) {
+                free(tokens[i]);
+            }
+            free(tokens);
+            free(line_copy);
+            return NULL;
+        }
+        (*argc)++;
+        token = strtok(NULL, " \t\n\r");
+    }
+    
+    tokens[*argc] = NULL;
+    free(line_copy);
+    
+    return tokens;
+}
+
+void cli_free_tokens(char **tokens, int argc)
+{
+    if (!tokens) return;
+    
+    for (int i = 0; i < argc; i++) {
+        free(tokens[i]);
+    }
+    free(tokens);
+}
+
+cli_result_t cli_execute_line(cli_context_t *ctx, const char *line)
+{
+    if (!ctx || !line) return CLI_ERROR_INVALID_ARGS;
+    
+    // Skip empty lines and comments
+    const char *trimmed = line;
+    while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+    if (*trimmed == '\0' || *trimmed == '#' || *trimmed == '\n') {
+        return CLI_SUCCESS;
+    }
+    
+    // Handle special commands
+    if (strncmp(trimmed, "exit", 4) == 0 || strncmp(trimmed, "quit", 4) == 0) {
+        return CLI_ERROR_GENERIC; // Use as exit signal
+    }
+    
+    // Tokenize the line
+    int argc;
+    char **argv = cli_tokenize_line(line, &argc);
+    if (!argv || argc == 0) {
+        return CLI_SUCCESS; // Empty line
+    }
+    
+    // Create a fake argv with program name as first argument
+    char **full_argv = malloc((argc + 1) * sizeof(char*));
+    if (!full_argv) {
+        cli_free_tokens(argv, argc);
+        return CLI_ERROR_GENERIC;
+    }
+    
+    full_argv[0] = strdup(ctx->program_name ? ctx->program_name : "goxel-headless");
+    for (int i = 0; i < argc; i++) {
+        full_argv[i + 1] = argv[i]; // Copy pointers
+    }
+    
+    // Execute the command
+    cli_result_t result = cli_run(ctx, argc + 1, full_argv);
+    
+    // Cleanup
+    free(full_argv[0]);
+    free(full_argv);
+    cli_free_tokens(argv, argc);
+    
+    return result;
+}
+
+cli_result_t cli_run_interactive(cli_context_t *ctx)
+{
+    if (!ctx) return CLI_ERROR_INVALID_ARGS;
+    
+    if (!ctx->quiet) {
+        printf("Goxel Headless Interactive Mode\n");
+        printf("Type 'help' for available commands, 'exit' to quit\n\n");
+    }
+    
+    char line[1024];
+    cli_result_t result = CLI_SUCCESS;
+    
+    while (1) {
+        if (!ctx->quiet) {
+            printf("goxel> ");
+            fflush(stdout);
+        }
+        
+        if (!fgets(line, sizeof(line), stdin)) {
+            // EOF or error
+            break;
+        }
+        
+        result = cli_execute_line(ctx, line);
+        
+        // Check for exit condition
+        if (result == CLI_ERROR_GENERIC) {
+            if (!ctx->quiet) {
+                printf("Goodbye!\n");
+            }
+            result = CLI_SUCCESS;
+            break;
+        }
+        
+        // Print error messages
+        if (result != CLI_SUCCESS && !ctx->quiet) {
+            fprintf(stderr, "Error: %s\n", cli_error_string(result));
+        }
+    }
+    
+    return result;
 }

@@ -108,6 +108,16 @@ int goxel_core_remove_voxels_in_box(goxel_core_context_t *ctx, int x1, int y1, i
 int goxel_core_paint_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4], int layer_id);
 int goxel_core_get_voxel(goxel_core_context_t *ctx, int x, int y, int z, uint8_t rgba[4]);
 
+// Batch voxel operations
+typedef struct voxel_op {
+    int x, y, z;
+    uint8_t rgba[4];
+    int layer_id;
+} voxel_op_t;
+
+int goxel_core_add_voxels_batch(goxel_core_context_t *ctx, const voxel_op_t *ops, int count);
+int goxel_core_remove_voxels_batch(goxel_core_context_t *ctx, const voxel_op_t *ops, int count);
+
 // Layer operations
 int goxel_core_create_layer(goxel_core_context_t *ctx, const char *name, uint8_t rgba[4], int visible);
 int goxel_core_delete_layer(goxel_core_context_t *ctx, int layer_id, const char *name);
@@ -116,6 +126,7 @@ int goxel_core_get_layer_count(goxel_core_context_t *ctx);
 int goxel_core_merge_layers(goxel_core_context_t *ctx, int source_id, int target_id, const char *source_name, const char *target_name);
 int goxel_core_set_layer_visibility(goxel_core_context_t *ctx, int layer_id, const char *name, int visible);
 int goxel_core_rename_layer(goxel_core_context_t *ctx, int layer_id, const char *old_name, const char *new_name);
+void goxel_core_debug_layers(goxel_core_context_t *ctx);
 
 // Rendering operations  
 int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset);
