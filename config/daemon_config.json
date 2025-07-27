@@ -1,0 +1,119 @@
+{
+  "$schema": "https://goxel.xyz/schemas/daemon-config-v14.json",
+  "version": "14.0.0",
+  "description": "Goxel v14 Daemon Configuration",
+  
+  "daemon": {
+    "daemonize": true,
+    "pid_file": "/var/run/goxel-daemon.pid",
+    "socket_path": "/var/run/goxel-daemon.sock",
+    "log_file": "/var/log/goxel-daemon.log",
+    "working_dir": "/var/lib/goxel",
+    "user": "goxel",
+    "group": "goxel"
+  },
+  
+  "server": {
+    "workers": 4,
+    "queue_size": 1024,
+    "max_connections": 256,
+    "enable_priority_queue": false,
+    "bind_address": "unix",
+    "timeout_seconds": 30
+  },
+  
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "rotation": {
+      "enabled": true,
+      "max_size_mb": 100,
+      "max_files": 10,
+      "max_age_days": 30
+    },
+    "structured": true,
+    "include_timestamp": true,
+    "include_pid": true,
+    "include_thread_id": true
+  },
+  
+  "security": {
+    "socket_permissions": "0660",
+    "socket_group": "goxel",
+    "enable_authentication": false,
+    "max_request_size_mb": 10,
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_second": 100,
+      "burst_size": 200
+    }
+  },
+  
+  "performance": {
+    "worker_thread_stack_size_kb": 1024,
+    "message_buffer_size_kb": 64,
+    "enable_memory_pooling": true,
+    "gc_interval_seconds": 300,
+    "max_memory_mb": 512
+  },
+  
+  "monitoring": {
+    "enable_health_check": true,
+    "health_check_interval_seconds": 30,
+    "enable_metrics": true,
+    "metrics_endpoint": "/metrics",
+    "enable_profiling": false
+  },
+  
+  "auto_start": {
+    "enabled": true,
+    "start_on_boot": true,
+    "restart_on_failure": true,
+    "max_restart_attempts": 5,
+    "restart_delay_seconds": 5,
+    "exponential_backoff": true
+  },
+  
+  "mcp_integration": {
+    "enabled": true,
+    "auto_start_daemon": true,
+    "health_check_timeout_ms": 5000,
+    "startup_timeout_ms": 30000,
+    "shutdown_timeout_ms": 10000,
+    "reconnect_attempts": 3,
+    "reconnect_delay_ms": 1000
+  },
+  
+  "environment": {
+    "GOXEL_DAEMON_MODE": "production",
+    "GOXEL_LOG_LEVEL": "info",
+    "GOXEL_SOCKET_PATH": "/var/run/goxel-daemon.sock",
+    "GOXEL_MAX_WORKERS": "4",
+    "GOXEL_ENABLE_PROFILING": "false"
+  },
+  
+  "paths": {
+    "data_directory": "/var/lib/goxel",
+    "temp_directory": "/tmp/goxel",
+    "cache_directory": "/var/cache/goxel",
+    "config_directory": "/etc/goxel"
+  },
+  
+  "defaults": {
+    "linux": {
+      "daemon.pid_file": "/var/run/goxel-daemon.pid",
+      "daemon.socket_path": "/var/run/goxel-daemon.sock",
+      "daemon.log_file": "/var/log/goxel-daemon.log"
+    },
+    "darwin": {
+      "daemon.pid_file": "/usr/local/var/run/goxel-daemon.pid",
+      "daemon.socket_path": "/usr/local/var/run/goxel-daemon.sock",
+      "daemon.log_file": "/usr/local/var/log/goxel-daemon.log"
+    },
+    "windows": {
+      "daemon.pid_file": "C:\\ProgramData\\Goxel\\goxel-daemon.pid",
+      "daemon.socket_path": "\\\\.\\pipe\\goxel-daemon",
+      "daemon.log_file": "C:\\ProgramData\\Goxel\\goxel-daemon.log"
+    }
+  }
+}

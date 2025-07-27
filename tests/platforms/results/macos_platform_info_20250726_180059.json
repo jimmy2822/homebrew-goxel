@@ -1,0 +1,12 @@
+{
+    "platform": {
+        "os": "macOS",
+        "version": "15.5",
+        "architecture": "arm64",
+        "kernel": "24.5.0",
+        "hardware": "MacBookPro17,1",
+        "cpu_cores": 8,
+        "memory_gb": 16.00,
+        "test_timestamp": "20250726_180059"
+    }
+}

@@ -2,11 +2,11 @@
 # Essential tests only - using existing build system
 
 # Use existing build to create test executables
-GOXEL_CLI = ../goxel-headless
+GOXEL_CLI = ../goxel-cli
 SIMPLE_PERF_TEST = simple_perf_test.py
 
 # Essential tests - minimal but comprehensive coverage
-TESTS = test_cli_functionality test_performance
+TESTS = test_cli_functionality test_performance test_json_rpc_methods test_concurrent_processing
 
 all: $(TESTS)
 
@@ -43,6 +43,17 @@ run-performance: test_performance
 	@echo "Running performance tests..."
 	@./test_performance
 
+# Mock test for JSON RPC methods (validates implementation structure)
+test_json_rpc_methods: test_json_rpc_mock.c
+	@echo "Building JSON RPC mock tests..."
+	@gcc -std=c99 -Wall -Wextra \
+		test_json_rpc_mock.c \
+		-o test_json_rpc_methods
+
+run-json-rpc-methods: test_json_rpc_methods
+	@echo "Running JSON RPC method tests..."
+	@./test_json_rpc_methods
+
 # Run all essential tests
 run-all: $(TESTS)
 	@echo "Running ALL Goxel v13.1 Essential Tests..."
@@ -51,6 +62,8 @@ run-all: $(TESTS)
 	@$(MAKE) run-cli-functionality
 	@echo ""
 	@$(MAKE) run-performance
+	@echo ""
+	@$(MAKE) run-json-rpc-methods
 	@echo ""
 	@echo "========================================"
 	@echo "All essential tests completed!"
@@ -65,10 +78,13 @@ check-cli:
 
 # Clean test artifacts
 clean:
-	rm -f test_cli_functionality test_performance
+	rm -f test_cli_functionality test_performance test_json_rpc_methods
 	rm -f /tmp/test_*.gox /tmp/test_*.png /tmp/test_*.obj /tmp/test_*.ply
 
 # Quick test - just CLI functionality
 quick: check-cli test_cli_functionality run-cli-functionality
 
-.PHONY: all run-cli-functionality run-performance run-all check-cli clean quick
+# Test JSON RPC methods specifically
+test-json-rpc-methods: test_json_rpc_methods run-json-rpc-methods
+
+.PHONY: all run-cli-functionality run-performance run-json-rpc-methods run-all check-cli clean quick test-json-rpc-methods

@@ -1,0 +1,891 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Goxel v14.0 Daemon API",
+    "version": "14.0.0",
+    "description": "JSON RPC 2.0 API specification for the Goxel v14.0 Daemon Architecture",
+    "contact": {
+      "name": "Goxel Development Team",
+      "url": "https://goxel.xyz",
+      "email": "support@goxel.xyz"
+    },
+    "license": {
+      "name": "GPL-3.0",
+      "url": "https://www.gnu.org/licenses/gpl-3.0.html"
+    }
+  },
+  "servers": [
+    {
+      "url": "unix:///tmp/goxel-daemon.sock",
+      "description": "Unix socket connection (recommended for local use)"
+    },
+    {
+      "url": "tcp://localhost:8080",
+      "description": "TCP connection (for remote access)"
+    }
+  ],
+  "paths": {},
+  "components": {
+    "schemas": {
+      "JSONRPCRequest": {
+        "type": "object",
+        "required": ["jsonrpc", "method", "id"],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "enum": ["2.0"],
+            "description": "JSON-RPC protocol version"
+          },
+          "method": {
+            "type": "string",
+            "description": "Method name to call"
+          },
+          "params": {
+            "oneOf": [
+              {"type": "object"},
+              {"type": "array"}
+            ],
+            "description": "Method parameters"
+          },
+          "id": {
+            "oneOf": [
+              {"type": "string"},
+              {"type": "number"},
+              {"type": "null"}
+            ],
+            "description": "Request identifier"
+          }
+        }
+      },
+      "JSONRPCResponse": {
+        "type": "object",
+        "required": ["jsonrpc", "id"],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "enum": ["2.0"]
+          },
+          "result": {
+            "description": "Method result (present on success)"
+          },
+          "error": {
+            "$ref": "#/components/schemas/JSONRPCError",
+            "description": "Error details (present on failure)"
+          },
+          "id": {
+            "oneOf": [
+              {"type": "string"},
+              {"type": "number"},
+              {"type": "null"}
+            ]
+          }
+        }
+      },
+      "JSONRPCError": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Error code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "data": {
+            "description": "Additional error data"
+          }
+        }
+      },
+      "Position3D": {
+        "type": "array",
+        "items": {"type": "integer"},
+        "minItems": 3,
+        "maxItems": 3,
+        "description": "3D position as [x, y, z]",
+        "example": [0, -16, 0]
+      },
+      "Color": {
+        "type": "array",
+        "items": {"type": "integer", "minimum": 0, "maximum": 255},
+        "minItems": 3,
+        "maxItems": 4,
+        "description": "Color as [r, g, b] or [r, g, b, a]",
+        "example": [255, 128, 64, 255]
+      },
+      "BoundingBox": {
+        "type": "object",
+        "required": ["min", "max"],
+        "properties": {
+          "min": {"$ref": "#/components/schemas/Position3D"},
+          "max": {"$ref": "#/components/schemas/Position3D"}
+        }
+      },
+      "Camera": {
+        "type": "object",
+        "required": ["position", "target", "up", "fov"],
+        "properties": {
+          "position": {"$ref": "#/components/schemas/Position3D"},
+          "target": {"$ref": "#/components/schemas/Position3D"},
+          "up": {"$ref": "#/components/schemas/Position3D"},
+          "fov": {"type": "number", "minimum": 1, "maximum": 179}
+        }
+      },
+      "Lighting": {
+        "type": "object",
+        "properties": {
+          "ambient": {"type": "number", "minimum": 0, "maximum": 1},
+          "diffuse": {"type": "number", "minimum": 0, "maximum": 1},
+          "sun_direction": {"$ref": "#/components/schemas/Position3D"}
+        }
+      },
+      "ProjectInfo": {
+        "type": "object",
+        "required": ["project_id", "name", "canvas_size", "layer_count", "total_voxels"],
+        "properties": {
+          "project_id": {"type": "string"},
+          "name": {"type": "string"},
+          "canvas_size": {"$ref": "#/components/schemas/Position3D"},
+          "layer_count": {"type": "integer"},
+          "total_voxels": {"type": "integer"},
+          "bounding_box": {"$ref": "#/components/schemas/BoundingBox"},
+          "memory_usage": {
+            "type": "object",
+            "properties": {
+              "total_mb": {"type": "number"},
+              "layers_mb": {"type": "number"},
+              "history_mb": {"type": "number"}
+            }
+          },
+          "last_modified": {"type": "string", "format": "date-time"},
+          "file_path": {"type": "string"}
+        }
+      },
+      "LayerInfo": {
+        "type": "object",
+        "required": ["id", "name", "visible", "opacity", "voxel_count", "is_active"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "visible": {"type": "boolean"},
+          "opacity": {"type": "number", "minimum": 0, "maximum": 1},
+          "voxel_count": {"type": "integer"},
+          "is_active": {"type": "boolean"}
+        }
+      },
+      "VoxelData": {
+        "type": "object",
+        "required": ["position", "color"],
+        "properties": {
+          "position": {"$ref": "#/components/schemas/Position3D"},
+          "color": {"$ref": "#/components/schemas/Color"}
+        }
+      },
+      "VoxelInfo": {
+        "type": "object",
+        "required": ["exists", "position"],
+        "properties": {
+          "exists": {"type": "boolean"},
+          "position": {"$ref": "#/components/schemas/Position3D"},
+          "color": {"$ref": "#/components/schemas/Color"},
+          "material_id": {"type": "string"},
+          "layer_id": {"type": "string"}
+        }
+      },
+      "RenderResult": {
+        "type": "object",
+        "required": ["image_data", "format", "width", "height", "render_time_ms"],
+        "properties": {
+          "image_data": {"type": "string", "description": "Base64-encoded image data"},
+          "format": {"type": "string", "enum": ["png", "jpg", "bmp"]},
+          "width": {"type": "integer"},
+          "height": {"type": "integer"},
+          "render_time_ms": {"type": "number"}
+        }
+      },
+      "DaemonStatus": {
+        "type": "object",
+        "required": ["daemon_version", "uptime_seconds", "active_connections", "total_requests"],
+        "properties": {
+          "daemon_version": {"type": "string"},
+          "uptime_seconds": {"type": "integer"},
+          "active_connections": {"type": "integer"},
+          "total_requests": {"type": "integer"},
+          "average_response_time_ms": {"type": "number"},
+          "memory_usage": {
+            "type": "object",
+            "properties": {
+              "daemon_mb": {"type": "number"},
+              "goxel_core_mb": {"type": "number"},
+              "total_mb": {"type": "number"}
+            }
+          },
+          "active_projects": {"type": "integer"},
+          "performance_stats": {
+            "type": "object",
+            "properties": {
+              "requests_per_second": {"type": "number"},
+              "cache_hit_rate": {"type": "number"},
+              "errors_per_hour": {"type": "number"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "methods": {
+    "goxel.create_project": {
+      "summary": "Create a new voxel project",
+      "description": "Creates a new voxel project with optional template and size",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "description": "Project name"},
+          "template": {"type": "string", "enum": ["empty", "cube", "sphere"], "default": "empty"},
+          "size": {"$ref": "#/components/schemas/Position3D", "default": [64, 64, 64]}
+        },
+        "required": ["name"]
+      },
+      "result": {"$ref": "#/components/schemas/ProjectInfo"},
+      "examples": [
+        {
+          "name": "Create empty project",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.create_project",
+            "params": {"name": "My Project"},
+            "id": 1
+          },
+          "response": {
+            "jsonrpc": "2.0",
+            "result": {
+              "project_id": "uuid-string",
+              "name": "My Project",
+              "canvas_size": [64, 64, 64],
+              "layer_count": 1,
+              "total_voxels": 0
+            },
+            "id": 1
+          }
+        }
+      ],
+      "errors": [
+        {"code": -32602, "message": "Invalid project name"},
+        {"code": -32000, "message": "Failed to create project"}
+      ]
+    },
+    "goxel.load_project": {
+      "summary": "Load an existing project from file",
+      "params": {
+        "type": "object",
+        "properties": {
+          "file_path": {"type": "string"},
+          "set_active": {"type": "boolean", "default": true}
+        },
+        "required": ["file_path"]
+      },
+      "result": {"$ref": "#/components/schemas/ProjectInfo"},
+      "errors": [
+        {"code": -32004, "message": "File not found"},
+        {"code": -32000, "message": "Failed to load project"}
+      ]
+    },
+    "goxel.save_project": {
+      "summary": "Save the current project to file",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project_id": {"type": "string", "description": "Optional project ID"},
+          "file_path": {"type": "string"},
+          "format": {"type": "string", "enum": ["gox", "vox", "obj"], "default": "gox"},
+          "options": {
+            "type": "object",
+            "properties": {
+              "compress": {"type": "boolean", "default": true},
+              "include_history": {"type": "boolean", "default": false}
+            }
+          }
+        },
+        "required": ["file_path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "file_path": {"type": "string"},
+          "file_size": {"type": "integer"}
+        }
+      }
+    },
+    "goxel.get_project_info": {
+      "summary": "Get comprehensive project information",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project_id": {"type": "string", "description": "Optional project ID"}
+        }
+      },
+      "result": {"$ref": "#/components/schemas/ProjectInfo"}
+    },
+    "goxel.add_voxel": {
+      "summary": "Add a single voxel to the project",
+      "params": {
+        "type": "object",
+        "properties": {
+          "position": {"$ref": "#/components/schemas/Position3D"},
+          "color": {"$ref": "#/components/schemas/Color"},
+          "project_id": {"type": "string"},
+          "layer_id": {"type": "string"}
+        },
+        "required": ["position", "color"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "voxel_count": {"type": "integer"}
+        }
+      },
+      "errors": [
+        {"code": -32003, "message": "Position out of bounds"},
+        {"code": -32001, "message": "Project not found"}
+      ]
+    },
+    "goxel.add_voxel_batch": {
+      "summary": "Add multiple voxels efficiently",
+      "params": {
+        "type": "object",
+        "properties": {
+          "voxels": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/VoxelData"},
+            "maxItems": 10000
+          },
+          "project_id": {"type": "string"},
+          "layer_id": {"type": "string"}
+        },
+        "required": ["voxels"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "processed_count": {"type": "integer"},
+          "failed_count": {"type": "integer"},
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {"type": "integer"},
+                "error": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "goxel.remove_voxel": {
+      "summary": "Remove a voxel at specified coordinates",
+      "params": {
+        "type": "object",
+        "properties": {
+          "position": {"$ref": "#/components/schemas/Position3D"},
+          "project_id": {"type": "string"},
+          "layer_id": {"type": "string"}
+        },
+        "required": ["position"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "voxel_count": {"type": "integer"}
+        }
+      }
+    },
+    "goxel.get_voxel": {
+      "summary": "Get voxel information at coordinates",
+      "params": {
+        "type": "object",
+        "properties": {
+          "position": {"$ref": "#/components/schemas/Position3D"},
+          "project_id": {"type": "string"},
+          "layer_id": {"type": "string"}
+        },
+        "required": ["position"]
+      },
+      "result": {"$ref": "#/components/schemas/VoxelInfo"}
+    },
+    "goxel.create_layer": {
+      "summary": "Create a new layer in the project",
+      "params": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "visible": {"type": "boolean", "default": true},
+          "opacity": {"type": "number", "minimum": 0, "maximum": 1, "default": 1.0},
+          "project_id": {"type": "string"}
+        },
+        "required": ["name"]
+      },
+      "result": {"$ref": "#/components/schemas/LayerInfo"}
+    },
+    "goxel.list_layers": {
+      "summary": "List all layers in the project",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project_id": {"type": "string"}
+        }
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "layers": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/LayerInfo"}
+          },
+          "active_layer": {"type": "string"},
+          "total_layers": {"type": "integer"}
+        }
+      }
+    },
+    "goxel.set_active_layer": {
+      "summary": "Set the active layer for editing",
+      "params": {
+        "type": "object",
+        "properties": {
+          "layer_id": {"type": "string"},
+          "project_id": {"type": "string"}
+        },
+        "required": ["layer_id"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "active_layer": {"type": "string"}
+        }
+      }
+    },
+    "goxel.brush_stroke": {
+      "summary": "Perform a brush stroke operation",
+      "params": {
+        "type": "object",
+        "properties": {
+          "start_position": {"$ref": "#/components/schemas/Position3D"},
+          "end_position": {"$ref": "#/components/schemas/Position3D"},
+          "brush_size": {"type": "integer", "minimum": 1, "maximum": 10},
+          "color": {"$ref": "#/components/schemas/Color"},
+          "mode": {"type": "string", "enum": ["add", "remove", "paint"]},
+          "smoothing": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+          "project_id": {"type": "string"}
+        },
+        "required": ["start_position", "end_position", "brush_size", "color", "mode"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "voxels_affected": {"type": "integer"}
+        }
+      }
+    },
+    "goxel.fill_region": {
+      "summary": "Fill a connected region with color",
+      "params": {
+        "type": "object",
+        "properties": {
+          "seed_position": {"$ref": "#/components/schemas/Position3D"},
+          "color": {"$ref": "#/components/schemas/Color"},
+          "tolerance": {"type": "integer", "minimum": 0, "maximum": 255, "default": 10},
+          "mode": {"type": "string", "enum": ["replace", "add", "remove"]},
+          "project_id": {"type": "string"}
+        },
+        "required": ["seed_position", "color", "mode"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "voxels_filled": {"type": "integer"}
+        }
+      }
+    },
+    "goxel.select_region": {
+      "summary": "Select a region of voxels",
+      "params": {
+        "type": "object",
+        "properties": {
+          "box": {"$ref": "#/components/schemas/BoundingBox"},
+          "mode": {"type": "string", "enum": ["replace", "add", "subtract"]},
+          "project_id": {"type": "string"}
+        },
+        "required": ["box", "mode"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "selected_voxels": {"type": "integer"},
+          "selection_bounds": {"$ref": "#/components/schemas/BoundingBox"}
+        }
+      }
+    },
+    "goxel.render_image": {
+      "summary": "Render the project to an image",
+      "params": {
+        "type": "object",
+        "properties": {
+          "width": {"type": "integer", "minimum": 64, "maximum": 4096, "default": 512},
+          "height": {"type": "integer", "minimum": 64, "maximum": 4096, "default": 512},
+          "camera": {"$ref": "#/components/schemas/Camera"},
+          "lighting": {"$ref": "#/components/schemas/Lighting"},
+          "format": {"type": "string", "enum": ["png", "jpg", "bmp"], "default": "png"},
+          "quality": {"type": "integer", "minimum": 1, "maximum": 100, "default": 90},
+          "project_id": {"type": "string"}
+        },
+        "required": ["width", "height", "camera"]
+      },
+      "result": {"$ref": "#/components/schemas/RenderResult"}
+    },
+    "goxel.export_model": {
+      "summary": "Export project to 3D model format",
+      "params": {
+        "type": "object",
+        "properties": {
+          "file_path": {"type": "string"},
+          "format": {"type": "string", "enum": ["obj", "ply", "stl", "gltf", "vox"]},
+          "options": {
+            "type": "object",
+            "properties": {
+              "include_textures": {"type": "boolean", "default": true},
+              "merge_vertices": {"type": "boolean", "default": true},
+              "optimize_mesh": {"type": "boolean", "default": true},
+              "scale": {"type": "number", "default": 1.0}
+            }
+          },
+          "project_id": {"type": "string"}
+        },
+        "required": ["file_path", "format"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "file_path": {"type": "string"},
+          "format": {"type": "string"},
+          "file_size": {"type": "integer"},
+          "export_time_ms": {"type": "number"}
+        }
+      }
+    },
+    "goxel.get_daemon_status": {
+      "summary": "Get daemon health and performance info",
+      "params": {"type": "object"},
+      "result": {"$ref": "#/components/schemas/DaemonStatus"}
+    },
+    "goxel.get_config": {
+      "summary": "Get daemon configuration",
+      "params": {
+        "type": "object",
+        "properties": {
+          "section": {"type": "string"}
+        }
+      },
+      "result": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "goxel.set_config": {
+      "summary": "Update daemon configuration",
+      "params": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["config"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "updated_keys": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "goxel.get_performance_metrics": {
+      "summary": "Get detailed performance metrics",
+      "params": {
+        "type": "object",
+        "properties": {
+          "time_range_minutes": {"type": "integer", "default": 60}
+        }
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "request_metrics": {
+            "type": "object",
+            "properties": {
+              "total_requests": {"type": "integer"},
+              "requests_per_minute": {"type": "array", "items": {"type": "number"}},
+              "average_latency_ms": {"type": "number"},
+              "p95_latency_ms": {"type": "number"},
+              "p99_latency_ms": {"type": "number"}
+            }
+          },
+          "resource_metrics": {
+            "type": "object",
+            "properties": {
+              "memory_usage_mb": {"type": "array", "items": {"type": "number"}},
+              "cpu_usage_percent": {"type": "array", "items": {"type": "number"}},
+              "active_connections": {"type": "array", "items": {"type": "integer"}}
+            }
+          },
+          "error_metrics": {
+            "type": "object",
+            "properties": {
+              "total_errors": {"type": "integer"},
+              "error_rate": {"type": "number"},
+              "errors_by_code": {"type": "object", "additionalProperties": {"type": "integer"}}
+            }
+          }
+        }
+      }
+    },
+    "goxel.debug_dump_state": {
+      "summary": "Dump internal daemon state for debugging",
+      "params": {
+        "type": "object",
+        "properties": {
+          "include_projects": {"type": "boolean", "default": true},
+          "include_connections": {"type": "boolean", "default": true},
+          "include_performance": {"type": "boolean", "default": true}
+        }
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "daemon_state": {"type": "object"},
+          "projects": {"type": "array"},
+          "connections": {"type": "array"},
+          "performance": {"type": "object"}
+        }
+      }
+    },
+    "goxel.debug_trigger_gc": {
+      "summary": "Trigger garbage collection",
+      "params": {"type": "object"},
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "memory_freed_mb": {"type": "number"},
+          "gc_time_ms": {"type": "number"}
+        }
+      }
+    },
+    "goxel.ping": {
+      "summary": "Ping the daemon for latency testing",
+      "params": {"type": "object"},
+      "result": {
+        "type": "object",
+        "properties": {
+          "pong": {"type": "string", "enum": ["pong"]},
+          "timestamp": {"type": "string", "format": "date-time"},
+          "latency_ms": {"type": "number"}
+        }
+      }
+    },
+    "goxel.shutdown_daemon": {
+      "summary": "Gracefully shutdown the daemon",
+      "params": {
+        "type": "object",
+        "properties": {
+          "force": {"type": "boolean", "default": false}
+        }
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "message": {"type": "string"}
+        }
+      }
+    }
+  },
+  "errors": {
+    "standard_errors": [
+      {"code": -32700, "message": "Parse error", "description": "Invalid JSON was received"},
+      {"code": -32600, "message": "Invalid Request", "description": "JSON sent is not valid Request object"},
+      {"code": -32601, "message": "Method not found", "description": "Method does not exist / is not available"},
+      {"code": -32602, "message": "Invalid params", "description": "Invalid method parameter(s)"},
+      {"code": -32603, "message": "Internal error", "description": "Internal JSON-RPC error"}
+    ],
+    "application_errors": [
+      {"code": -32000, "message": "Server error", "description": "Generic server error"},
+      {"code": -32001, "message": "Project not found", "description": "Specified project doesn't exist"},
+      {"code": -32002, "message": "Layer not found", "description": "Specified layer doesn't exist"},
+      {"code": -32003, "message": "Invalid position", "description": "Coordinates out of bounds"},
+      {"code": -32004, "message": "File not found", "description": "Specified file doesn't exist"},
+      {"code": -32005, "message": "Permission denied", "description": "Insufficient permissions"},
+      {"code": -32006, "message": "Resource exhausted", "description": "Memory/disk space exceeded"},
+      {"code": -32007, "message": "Concurrent access", "description": "Resource locked by another operation"},
+      {"code": -32008, "message": "Invalid format", "description": "Unsupported file format"},
+      {"code": -32009, "message": "Render failed", "description": "Image rendering failed"},
+      {"code": -32010, "message": "Export failed", "description": "Model export failed"}
+    ]
+  },
+  "examples": {
+    "basic_workflow": {
+      "description": "Basic workflow: create project, add voxels, render, save",
+      "steps": [
+        {
+          "description": "Create new project",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.create_project",
+            "params": {"name": "My Voxel Art"},
+            "id": 1
+          }
+        },
+        {
+          "description": "Add single voxel",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.add_voxel",
+            "params": {
+              "position": [0, -16, 0],
+              "color": [255, 0, 0, 255]
+            },
+            "id": 2
+          }
+        },
+        {
+          "description": "Add multiple voxels",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.add_voxel_batch",
+            "params": {
+              "voxels": [
+                {"position": [1, -16, 0], "color": [0, 255, 0, 255]},
+                {"position": [2, -16, 0], "color": [0, 0, 255, 255]}
+              ]
+            },
+            "id": 3
+          }
+        },
+        {
+          "description": "Render image",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.render_image",
+            "params": {
+              "width": 512,
+              "height": 512,
+              "camera": {
+                "position": [20, 20, 20],
+                "target": [0, -16, 0],
+                "up": [0, 1, 0],
+                "fov": 45
+              }
+            },
+            "id": 4
+          }
+        },
+        {
+          "description": "Save project",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.save_project",
+            "params": {"file_path": "./my_art.gox"},
+            "id": 5
+          }
+        }
+      ]
+    },
+    "batch_operations": {
+      "description": "Efficient batch processing for large datasets",
+      "steps": [
+        {
+          "description": "Create project for terrain",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.create_project",
+            "params": {
+              "name": "Terrain Generation", 
+              "size": [128, 64, 128]
+            },
+            "id": 1
+          }
+        },
+        {
+          "description": "Add terrain voxels in large batch",
+          "request": {
+            "jsonrpc": "2.0",
+            "method": "goxel.add_voxel_batch",
+            "params": {
+              "voxels": "/* Array of 1000+ voxels for terrain */"
+            },
+            "id": 2
+          }
+        }
+      ]
+    }
+  },
+  "performance": {
+    "targets": {
+      "latency": {
+        "single_voxel": "< 2ms",
+        "batch_1000_voxels": "< 50ms",
+        "render_512x512": "< 100ms"
+      },
+      "throughput": {
+        "voxels_per_second": "> 1000",
+        "requests_per_second": "> 100"
+      },
+      "concurrency": {
+        "max_connections": 50,
+        "recommended_connections": 10
+      }
+    },
+    "optimization_tips": [
+      "Use batch operations for multiple voxels",
+      "Reuse connections when possible",
+      "Cache renders for repeated views",
+      "Use Unix sockets for best performance",
+      "Enable compression for large payloads"
+    ]
+  },
+  "client_libraries": {
+    "typescript": {
+      "package": "@goxel/daemon-client",
+      "version": "14.0.0",
+      "repository": "https://github.com/goxel/typescript-client"
+    },
+    "python": {
+      "package": "goxel-daemon-client",
+      "version": "14.0.0",
+      "repository": "https://github.com/goxel/python-client"
+    },
+    "go": {
+      "package": "github.com/goxel/go-client",
+      "version": "v14.0.0"
+    },
+    "rust": {
+      "package": "goxel-daemon-client",
+      "version": "14.0.0",
+      "registry": "https://crates.io/crates/goxel-daemon-client"
+    }
+  }
+}

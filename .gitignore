@@ -32,3 +32,35 @@ libgoxel-headless.dylib
 render_output.*
 tests/test_cli_execution*
 tests/test_*_report
+
+# V14 daemon build artifacts
+goxel-daemon
+src/daemon/*.o
+tests/goxel-daemon
+tests/socket_server_demo
+tests/test_daemon_lifecycle
+tests/test_json_rpc
+tests/test_json_rpc_methods
+tests/test_socket_server
+tests/minimal_test
+tests/serialize_test
+tests/single_test
+tests/platforms/*/test_*
+*.dSYM/
+
+# Node.js/TypeScript artifacts
+node_modules/
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+coverage/
+*.lcov
+.nyc_output/
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*

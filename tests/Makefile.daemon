@@ -1,0 +1,212 @@
+# Goxel v14.0 Daemon Architecture - Test Makefile
+# Process Lifecycle Management Foundation (A1-02-独立版)
+
+CC = gcc
+CFLAGS = -Wall -Wextra -std=c99 -O2 -g
+LDFLAGS = -lpthread
+
+# Source directories
+SRC_DIR = ../src/daemon
+TEST_DIR = .
+
+# Source files
+DAEMON_SOURCES = \
+	$(SRC_DIR)/daemon_lifecycle.c \
+	$(SRC_DIR)/signal_handling.c
+
+# Object files
+DAEMON_OBJECTS = $(DAEMON_SOURCES:.c=.o)
+
+# Test sources
+TEST_SOURCES = \
+	test_daemon_lifecycle.c
+
+# Test executables
+TEST_EXECUTABLES = test_daemon_lifecycle
+
+# Daemon main executable
+DAEMON_MAIN = goxel-daemon
+
+# Default target
+all: $(DAEMON_MAIN) $(TEST_EXECUTABLES)
+
+# Build daemon main executable
+$(DAEMON_MAIN): $(DAEMON_OBJECTS) $(SRC_DIR)/daemon_main.o
+	@echo "Building daemon executable: $@"
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+# Build daemon object files
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+	@echo "Compiling: $<"
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Build test executables
+test_daemon_lifecycle: test_daemon_lifecycle.o $(DAEMON_OBJECTS)
+	@echo "Building test: $@"
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+# Build test object files
+%.o: %.c
+	@echo "Compiling test: $<"
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Run all tests
+test: $(TEST_EXECUTABLES)
+	@echo "==================================="
+	@echo "Running Daemon Lifecycle Tests"
+	@echo "==================================="
+	@./test_daemon_lifecycle
+
+# Run daemon functionality tests
+test-daemon: $(DAEMON_MAIN)
+	@echo "==================================="
+	@echo "Testing Daemon Functionality"
+	@echo "==================================="
+	@echo "Running lifecycle tests..."
+	@./$(DAEMON_MAIN) --test-lifecycle
+	@echo ""
+	@echo "Running signal handling tests..."
+	@./$(DAEMON_MAIN) --test-signals
+	@echo ""
+	@echo "All daemon tests completed successfully!"
+
+# Test daemon control script
+test-script: $(DAEMON_MAIN)
+	@echo "==================================="
+	@echo "Testing Daemon Control Script"
+	@echo "==================================="
+	@echo "Testing daemon control functionality..."
+	@../scripts/daemon_control.sh --binary ./$(DAEMON_MAIN) test
+	@echo ""
+	@echo "Control script tests completed successfully!"
+
+# Comprehensive test suite
+test-all: test test-daemon test-script
+	@echo "==================================="
+	@echo "All Tests Completed Successfully!"
+	@echo "==================================="
+
+# Quick validation test
+quick-test: $(DAEMON_MAIN)
+	@echo "Running quick validation test..."
+	@./$(DAEMON_MAIN) --version
+	@./$(DAEMON_MAIN) --help | head -5
+	@echo "Quick test completed!"
+
+# Install daemon binary
+install: $(DAEMON_MAIN)
+	@echo "Installing daemon binary..."
+	@mkdir -p /usr/local/bin
+	@cp $(DAEMON_MAIN) /usr/local/bin/
+	@chmod +x /usr/local/bin/$(DAEMON_MAIN)
+	@echo "Daemon installed to /usr/local/bin/$(DAEMON_MAIN)"
+
+# Install control script
+install-script:
+	@echo "Installing control script..."
+	@mkdir -p /usr/local/bin
+	@cp ../scripts/daemon_control.sh /usr/local/bin/goxel-daemon-ctl
+	@chmod +x /usr/local/bin/goxel-daemon-ctl
+	@echo "Control script installed to /usr/local/bin/goxel-daemon-ctl"
+
+# Full installation
+install-all: install install-script
+	@echo "Full installation completed!"
+	@echo "Use 'goxel-daemon-ctl start' to start the daemon"
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning build artifacts..."
+	@rm -f $(DAEMON_OBJECTS) $(SRC_DIR)/daemon_main.o
+	@rm -f $(TEST_EXECUTABLES) *.o
+	@rm -f $(DAEMON_MAIN)
+	@rm -f /tmp/test-goxel-daemon.*
+	@echo "Clean completed!"
+
+# Clean and rebuild
+rebuild: clean all
+
+# Show help
+help:
+	@echo "Goxel v14.0 Daemon Architecture - Build System"
+	@echo "=============================================="
+	@echo ""
+	@echo "Available targets:"
+	@echo "  all          - Build daemon and tests (default)"
+	@echo "  $(DAEMON_MAIN)    - Build daemon executable"
+	@echo "  test         - Run unit tests"
+	@echo "  test-daemon  - Run daemon functionality tests"
+	@echo "  test-script  - Test daemon control script"
+	@echo "  test-all     - Run comprehensive test suite"
+	@echo "  quick-test   - Run quick validation test"
+	@echo "  install      - Install daemon binary"
+	@echo "  install-script - Install control script"
+	@echo "  install-all  - Full installation"
+	@echo "  clean        - Clean build artifacts"
+	@echo "  rebuild      - Clean and rebuild"
+	@echo "  help         - Show this help"
+	@echo ""
+	@echo "Environment variables:"
+	@echo "  CC           - C compiler (default: gcc)"
+	@echo "  CFLAGS       - Compiler flags"
+	@echo "  LDFLAGS      - Linker flags"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make                    # Build everything"
+	@echo "  make test-all           # Run all tests"
+	@echo "  make CC=clang           # Use clang compiler"
+	@echo "  sudo make install-all   # Install system-wide"
+
+# Debug build
+debug: CFLAGS += -DDEBUG -O0
+debug: $(DAEMON_MAIN) $(TEST_EXECUTABLES)
+
+# Release build
+release: CFLAGS += -DNDEBUG -O3
+release: $(DAEMON_MAIN)
+
+# Memory check with valgrind (if available)
+memcheck: $(TEST_EXECUTABLES)
+	@if command -v valgrind >/dev/null 2>&1; then \
+		echo "Running memory check with valgrind..."; \
+		valgrind --leak-check=full --show-leak-kinds=all ./test_daemon_lifecycle; \
+	else \
+		echo "Valgrind not available, skipping memory check"; \
+	fi
+
+# Static analysis with cppcheck (if available)
+static-analysis:
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		echo "Running static analysis with cppcheck..."; \
+		cppcheck --enable=all --std=c99 $(SRC_DIR)/*.c $(TEST_DIR)/*.c; \
+	else \
+		echo "Cppcheck not available, skipping static analysis"; \
+	fi
+
+# Code formatting with clang-format (if available)
+format:
+	@if command -v clang-format >/dev/null 2>&1; then \
+		echo "Formatting code with clang-format..."; \
+		clang-format -i $(SRC_DIR)/*.c $(SRC_DIR)/*.h $(TEST_DIR)/*.c; \
+		echo "Code formatting completed!"; \
+	else \
+		echo "clang-format not available, skipping formatting"; \
+	fi
+
+# Performance testing
+perf-test: $(DAEMON_MAIN)
+	@echo "Running performance tests..."
+	@echo "Testing daemon startup time..."
+	@time ./$(DAEMON_MAIN) --test-lifecycle >/dev/null
+	@echo ""
+	@echo "Testing signal handling performance..."
+	@time ./$(DAEMON_MAIN) --test-signals >/dev/null
+	@echo "Performance tests completed!"
+
+# Dependencies
+test_daemon_lifecycle.o: test_daemon_lifecycle.c $(SRC_DIR)/daemon_lifecycle.h
+$(SRC_DIR)/daemon_lifecycle.o: $(SRC_DIR)/daemon_lifecycle.c $(SRC_DIR)/daemon_lifecycle.h
+$(SRC_DIR)/signal_handling.o: $(SRC_DIR)/signal_handling.c $(SRC_DIR)/daemon_lifecycle.h
+$(SRC_DIR)/daemon_main.o: $(SRC_DIR)/daemon_main.c $(SRC_DIR)/daemon_lifecycle.h
+
+.PHONY: all test test-daemon test-script test-all quick-test install install-script install-all clean rebuild help debug release memcheck static-analysis format perf-test

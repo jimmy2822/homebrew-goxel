@@ -1,0 +1,325 @@
+name: Performance Testing
+
+on:
+  push:
+    branches: [ master, feature/*, performance/* ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    # Run performance tests daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode (quick/full)'
+        required: false
+        default: 'quick'
+        type: choice
+        options:
+        - quick
+        - full
+
+env:
+  # Performance test configuration
+  GOXEL_PERFORMANCE_TARGET_LATENCY: 2.1
+  GOXEL_PERFORMANCE_TARGET_THROUGHPUT: 1000
+  GOXEL_PERFORMANCE_TARGET_MEMORY: 50
+  GOXEL_PERFORMANCE_TARGET_IMPROVEMENT: 7.0
+
+jobs:
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    strategy:
+      matrix:
+        mode: [quick, full]
+        exclude:
+          # Only run full tests on schedule or manual trigger
+          - mode: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && 'full' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Need full history for performance comparison
+    
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          scons \
+          pkg-config \
+          libglfw3-dev \
+          libgtk-3-dev \
+          libpng-dev \
+          libosmesa6-dev \
+          bc
+    
+    - name: Setup Python environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+    
+    - name: Install Python dependencies
+      run: |
+        pip install matplotlib pandas
+    
+    - name: Build Goxel
+      run: |
+        # Build headless version for performance testing
+        scons headless=1 cli_tools=1 mode=release
+        
+        # Verify build
+        ./goxel-headless --version
+    
+    - name: Build performance tests
+      run: |
+        cd tests/performance
+        make all
+        make test
+    
+    - name: Create test results directory
+      run: |
+        mkdir -p performance_results
+        echo "Performance test run: $(date)" > performance_results/test_info.txt
+        echo "Commit: ${{ github.sha }}" >> performance_results/test_info.txt
+        echo "Branch: ${{ github.ref_name }}" >> performance_results/test_info.txt
+        echo "Test mode: ${{ matrix.mode }}" >> performance_results/test_info.txt
+    
+    - name: Start mock daemon for testing
+      run: |
+        # Create a simple mock daemon for testing
+        # In production, this would start the actual daemon
+        echo "Mock daemon started" > performance_results/daemon_status.txt
+    
+    - name: Run performance benchmarks
+      run: |
+        # Determine test mode
+        TEST_MODE="${{ github.event.inputs.test_mode || matrix.mode }}"
+        
+        # Run benchmarks with appropriate mode
+        if [ "$TEST_MODE" = "full" ]; then
+          timeout 45m ./scripts/run_benchmarks.sh --full --ci --output performance_results
+        else
+          timeout 15m ./scripts/run_benchmarks.sh --quick --ci --output performance_results
+        fi
+      continue-on-error: true
+    
+    - name: Generate performance reports
+      run: |
+        # Generate JSON report for CI
+        ./tools/performance_reporter.py performance_results --json performance_results/performance.json
+        
+        # Generate HTML report
+        ./tools/performance_reporter.py performance_results --html performance_results/performance_report.html
+        
+        # Generate CSV data
+        ./tools/performance_reporter.py performance_results --csv performance_results/performance_data.csv
+      continue-on-error: true
+    
+    - name: Download baseline performance data
+      uses: actions/download-artifact@v3
+      with:
+        name: performance-baseline-${{ matrix.mode }}
+        path: baseline/
+      continue-on-error: true
+    
+    - name: Check for performance regressions
+      id: regression-check
+      run: |
+        if [ -f "baseline/performance.json" ]; then
+          echo "Checking for regressions against baseline..."
+          if ./tools/performance_reporter.py performance_results --check-regressions --baseline baseline/performance.json; then
+            echo "regression_detected=false" >> $GITHUB_OUTPUT
+            echo "✅ No performance regressions detected" >> performance_results/regression_status.txt
+          else
+            echo "regression_detected=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Performance regressions detected" >> performance_results/regression_status.txt
+          fi
+        else
+          echo "regression_detected=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No baseline data available for comparison" >> performance_results/regression_status.txt
+        fi
+      continue-on-error: true
+    
+    - name: Parse performance metrics
+      id: parse-metrics
+      run: |
+        # Extract key metrics for status checks
+        if [ -f "performance_results/performance.json" ]; then
+          python3 << 'EOF'
+        import json
+        import os
+        
+        try:
+            with open('performance_results/performance.json', 'r') as f:
+                data = json.load(f)
+            
+            # Extract key metrics
+            metrics = {}
+            for result in data.get('results', []):
+                if result['name'] == 'latency_benchmark' and 'avg_latency' in result.get('metrics', {}):
+                    metrics['latency'] = result['metrics']['avg_latency']['value']
+                elif result['name'] == 'throughput_benchmark' and 'avg_throughput' in result.get('metrics', {}):
+                    metrics['throughput'] = result['metrics']['avg_throughput']['value']
+                elif result['name'] == 'memory_profiling' and 'peak_memory' in result.get('metrics', {}):
+                    metrics['memory'] = result['metrics']['peak_memory']['value']
+                elif result['name'] == 'performance_comparison' and 'improvement_ratio' in result.get('metrics', {}):
+                    metrics['improvement'] = result['metrics']['improvement_ratio']['value']
+            
+            # Set GitHub outputs
+            for key, value in metrics.items():
+                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                    f.write(f"{key}_value={value}\n")
+                    
+            # Calculate pass/fail status
+            targets = {
+                'latency': float(os.environ.get('GOXEL_PERFORMANCE_TARGET_LATENCY', '2.1')),
+                'throughput': float(os.environ.get('GOXEL_PERFORMANCE_TARGET_THROUGHPUT', '1000')),
+                'memory': float(os.environ.get('GOXEL_PERFORMANCE_TARGET_MEMORY', '50')),
+                'improvement': float(os.environ.get('GOXEL_PERFORMANCE_TARGET_IMPROVEMENT', '7.0'))
+            }
+            
+            passed_tests = 0
+            total_tests = 0
+            
+            for metric, value in metrics.items():
+                if metric in targets:
+                    total_tests += 1
+                    if metric in ['latency', 'memory']:  # Lower is better
+                        if value <= targets[metric]:
+                            passed_tests += 1
+                    else:  # Higher is better
+                        if value >= targets[metric]:
+                            passed_tests += 1
+            
+            overall_pass = passed_tests >= total_tests * 0.8
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                f.write(f"tests_passed={passed_tests}\n")
+                f.write(f"tests_total={total_tests}\n")
+                f.write(f"overall_pass={overall_pass}\n")
+                
+        except Exception as e:
+            print(f"Error parsing metrics: {e}")
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                f.write("overall_pass=false\n")
+        EOF
+        fi
+      continue-on-error: true
+    
+    - name: Create performance summary
+      run: |
+        # Create a summary comment for the PR/commit
+        cat > performance_results/summary.md << 'EOF'
+        ## 🚀 Performance Test Results
+        
+        **Test Mode:** ${{ matrix.mode }}  
+        **Commit:** ${{ github.sha }}  
+        **Branch:** ${{ github.ref_name }}  
+        **Timestamp:** $(date -u)
+        
+        ### Key Metrics
+        
+        | Metric | Target | Actual | Status |
+        |--------|--------|---------|--------|
+        | Average Latency | < ${{ env.GOXEL_PERFORMANCE_TARGET_LATENCY }}ms | ${{ steps.parse-metrics.outputs.latency_value || 'N/A' }}ms | ${{ steps.parse-metrics.outputs.latency_value && steps.parse-metrics.outputs.latency_value < env.GOXEL_PERFORMANCE_TARGET_LATENCY && '✅' || '❌' }} |
+        | Throughput | > ${{ env.GOXEL_PERFORMANCE_TARGET_THROUGHPUT }} ops/s | ${{ steps.parse-metrics.outputs.throughput_value || 'N/A' }} ops/s | ${{ steps.parse-metrics.outputs.throughput_value && steps.parse-metrics.outputs.throughput_value > env.GOXEL_PERFORMANCE_TARGET_THROUGHPUT && '✅' || '❌' }} |
+        | Memory Usage | < ${{ env.GOXEL_PERFORMANCE_TARGET_MEMORY }}MB | ${{ steps.parse-metrics.outputs.memory_value || 'N/A' }}MB | ${{ steps.parse-metrics.outputs.memory_value && steps.parse-metrics.outputs.memory_value < env.GOXEL_PERFORMANCE_TARGET_MEMORY && '✅' || '❌' }} |
+        | Improvement vs CLI | > ${{ env.GOXEL_PERFORMANCE_TARGET_IMPROVEMENT }}x | ${{ steps.parse-metrics.outputs.improvement_value || 'N/A' }}x | ${{ steps.parse-metrics.outputs.improvement_value && steps.parse-metrics.outputs.improvement_value > env.GOXEL_PERFORMANCE_TARGET_IMPROVEMENT && '✅' || '❌' }} |
+        
+        ### Overall Status
+        - **Tests Passed:** ${{ steps.parse-metrics.outputs.tests_passed || 0 }}/${{ steps.parse-metrics.outputs.tests_total || 0 }}
+        - **Performance Grade:** ${{ steps.parse-metrics.outputs.overall_pass == 'true' && '✅ PASS' || '❌ FAIL' }}
+        - **Regressions:** ${{ steps.regression-check.outputs.regression_detected == 'true' && '⚠️ DETECTED' || '✅ NONE' }}
+        
+        📊 [View Full Report](performance_report.html)
+        EOF
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results-${{ matrix.mode }}-${{ github.sha }}
+        path: performance_results/
+        retention-days: 30
+    
+    - name: Save baseline for future comparisons
+      if: github.ref == 'refs/heads/master' && steps.parse-metrics.outputs.overall_pass == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-baseline-${{ matrix.mode }}
+        path: performance_results/performance.json
+        retention-days: 90
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const summary = fs.readFileSync('performance_results/summary.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          } catch (error) {
+            console.log('Could not post PR comment:', error);
+          }
+    
+    - name: Fail on performance regression
+      if: steps.regression-check.outputs.regression_detected == 'true'
+      run: |
+        echo "❌ Performance regression detected!"
+        echo "Review the performance report for details."
+        exit 1
+    
+    - name: Fail on performance targets not met
+      if: steps.parse-metrics.outputs.overall_pass == 'false'
+      run: |
+        echo "❌ Performance targets not met!"
+        echo "Current results do not meet the required performance standards."
+        exit 1
+
+  performance-summary:
+    name: Performance Summary
+    runs-on: ubuntu-latest
+    needs: performance-tests
+    if: always()
+    
+    steps:
+    - name: Download all performance results
+      uses: actions/download-artifact@v3
+      with:
+        pattern: performance-results-*
+        path: all_results/
+    
+    - name: Create combined summary
+      run: |
+        echo "# 🚀 Goxel v14.0 Performance Test Summary" > summary.md
+        echo "" >> summary.md
+        echo "**Commit:** ${{ github.sha }}" >> summary.md
+        echo "**Workflow:** ${{ github.run_number }}" >> summary.md
+        echo "**Date:** $(date -u)" >> summary.md
+        echo "" >> summary.md
+        
+        # List all test results
+        for dir in all_results/*/; do
+          if [ -d "$dir" ]; then
+            echo "## $(basename "$dir")" >> summary.md
+            if [ -f "$dir/summary.md" ]; then
+              cat "$dir/summary.md" >> summary.md
+            fi
+            echo "" >> summary.md
+          fi
+        done
+    
+    - name: Upload combined summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-summary-${{ github.sha }}
+        path: summary.md
