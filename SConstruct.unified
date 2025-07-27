@@ -1,0 +1,385 @@
+# Goxel 3D voxels editor - Unified Build Configuration
+#
+# copyright (c) 2018-2025 Guillaume Chereau <guillaume@noctua-software.com>
+#
+# Goxel is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
+#
+# Goxel is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# goxel.  If not, see <http://www.gnu.org/licenses/>.
+
+import glob
+import os
+import sys
+
+vars = Variables('settings.py')
+vars.AddVariables(
+    EnumVariable('mode', 'Build mode', 'debug',
+        allowed_values=('debug', 'release', 'profile', 'analyze')),
+    BoolVariable('werror', 'Warnings as error', True),
+    BoolVariable('sound', 'Enable sound', False),
+    BoolVariable('yocto', 'Enable yocto renderer', True),
+    BoolVariable('unified', 'Build unified binary (GUI + headless)', True),
+    BoolVariable('legacy_headless', 'Build legacy headless-only binary', False),
+    BoolVariable('legacy_gui', 'Build legacy GUI-only binary', False),
+    BoolVariable('c_api', 'Build C API shared library', False),
+    PathVariable('config_file', 'Config file to use', 'src/config.h'),
+)
+
+target_os = str(Platform())
+
+if target_os == 'posix':
+    vars.AddVariables(
+        EnumVariable('nfd_backend', 'Native file dialog backend', default='gtk',
+                     allowed_values=('gtk', 'portal')),
+    )
+
+env = Environment(variables=vars, ENV=os.environ)
+conf = env.Configure()
+
+if env['mode'] == 'analyze':
+    # Make sure clang static analyzer has a chance to override de compiler
+    # and set CCC settings
+    env["CC"] = os.getenv("CC") or env["CC"]
+    env["CXX"] = os.getenv("CXX") or env["CXX"]
+    env["ENV"].update(x for x in os.environ.items() if x[0].startswith("CCC_"))
+
+if os.environ.get('CC') == 'clang':
+    env.Replace(CC='clang', CXX='clang++')
+
+# Asan & Ubsan (need to come first).
+if env['mode'] == 'debug' and target_os == 'posix':
+    env.Append(CCFLAGS=['-fsanitize=address', '-fsanitize=undefined'],
+               LINKFLAGS=['-fsanitize=address', '-fsanitize=undefined'],
+               LIBS=['asan', 'ubsan'])
+
+# Global compilation flags.
+env.Append(
+    CFLAGS=['-std=gnu99', '-Wall',
+            '-Wno-unknow-pragma', '-Wno-unknown-warning-option'],
+    CXXFLAGS=['-std=gnu++17', '-Wall', '-Wno-narrowing']
+)
+
+if env['werror']:
+    env.Append(CCFLAGS='-Werror')
+
+if env['mode'] not in ['debug', 'analyze']:
+    env.Append(CPPDEFINES='NDEBUG', CCFLAGS='-O3')
+
+if env['mode'] == 'debug':
+    env.Append(CCFLAGS=['-O0'])
+
+if env['mode'] in ('profile', 'debug'):
+    env.Append(CCFLAGS='-g')
+
+env.Append(CPPPATH=['src', '.'])
+env.Append(CCFLAGS=['-include', '$config_file'])
+
+# Add build flags for unified mode
+if env['unified']:
+    env.Append(CPPDEFINES=['GOXEL_UNIFIED_BUILD=1'])
+    env.Append(CPPDEFINES=['GOXEL_HAS_GUI=1'])
+    env.Append(CPPDEFINES=['GOXEL_HAS_HEADLESS=1'])
+elif env['legacy_headless']:
+    env.Append(CPPDEFINES=['GOXEL_HEADLESS=1'])
+elif env['legacy_gui']:
+    env.Append(CPPDEFINES=['GOXEL_GUI=1'])
+
+if env['c_api']:
+    env.Append(CPPDEFINES=['GOXEL_C_API=1'])
+
+# Collect source files
+sources = []
+core_sources = []
+gui_sources = []
+headless_sources = []
+unified_sources = []
+
+# Always include core functionality
+for root, dirnames, filenames in os.walk('src/core'):
+    for filename in filenames:
+        if filename.endswith('.c') or filename.endswith('.cpp'):
+            core_sources.append(os.path.join(root, filename))
+
+# GUI sources (only for unified or legacy_gui builds)
+if env['unified'] or env['legacy_gui']:
+    for root, dirnames, filenames in os.walk('src/gui'):
+        for filename in filenames:
+            if filename.endswith('.c') or filename.endswith('.cpp'):
+                gui_sources.append(os.path.join(root, filename))
+
+# Headless sources (only for unified or legacy_headless builds)
+if env['unified'] or env['legacy_headless']:
+    for root, dirnames, filenames in os.walk('src/headless'):
+        for filename in filenames:
+            if filename.endswith('.c') or filename.endswith('.cpp'):
+                # Skip the stub file
+                if filename != 'goxel_headless_api_stub.c':
+                    headless_sources.append(os.path.join(root, filename))
+
+# Daemon sources (only for unified build)
+daemon_sources = []
+if env['unified']:
+    for root, dirnames, filenames in os.walk('src/daemon'):
+        for filename in filenames:
+            if filename.endswith('.c') or filename.endswith('.cpp'):
+                daemon_sources.append(os.path.join(root, filename))
+
+# Unified build sources
+if env['unified']:
+    unified_sources = [
+        'src/main_unified.c',
+        'src/main_gui.c',
+        'src/main_headless.c',
+    ]
+
+# Include remaining src files (excluding core/, gui/, headless/, main*.c)
+other_sources = []
+
+# Files with GUI dependencies that should be excluded for headless-only builds
+gui_dependent_files = {
+    'src/gui.c',
+    'src/imgui_user.c',
+    'src/dialogs.c',
+    'src/gesture.c',
+    'src/inputs.c',
+}
+
+# Files that provide core functionality needed by both GUI and headless
+shared_files = {
+    'src/goxel.c',
+    'src/image.c',
+    'src/layer.c',
+    'src/volume.c',
+    'src/volume_utils.c',
+    'src/mesh.c',
+    'src/render.c',
+    'src/camera.c',
+    'src/tools.c',
+    'src/action.c',
+    'src/block_def.c',
+    'src/assets.c',
+    'src/file_format.c',
+    'src/palette.c',
+    'src/material.c',
+    'src/shape.c',
+    'src/script.c',
+    'src/sound.c',
+}
+
+for root, dirnames, filenames in os.walk('src'):
+    # Skip subdirectories we handle separately
+    if any(subdir in root for subdir in ['core', 'gui', 'headless', 'daemon', 'tools', 'formats', 'utils']):
+        continue
+    
+    for filename in filenames:
+        if filename.endswith('.c') or filename.endswith('.cpp'):
+            filepath = os.path.join(root, filename)
+            
+            # Skip main files
+            if filename.startswith('main'):
+                continue
+            
+            # For unified build, include everything
+            if env['unified']:
+                other_sources.append(filepath)
+            # For legacy builds, filter based on GUI dependencies
+            elif env['legacy_headless']:
+                if filepath not in gui_dependent_files:
+                    other_sources.append(filepath)
+            else:  # legacy_gui
+                other_sources.append(filepath)
+
+# Also include tools, formats, and utils
+for subdir in ['tools', 'formats', 'utils']:
+    for root, dirnames, filenames in os.walk(f'src/{subdir}'):
+        for filename in filenames:
+            if filename.endswith('.c') or filename.endswith('.cpp'):
+                other_sources.append(os.path.join(root, filename))
+
+# Assemble final sources list
+sources = core_sources + other_sources
+
+if env['unified']:
+    sources += unified_sources
+    sources += gui_sources
+    sources += headless_sources
+    sources += daemon_sources
+elif env['legacy_gui']:
+    sources += gui_sources
+    sources.append('src/main.c')
+elif env['legacy_headless']:
+    sources += headless_sources
+    sources.append('src/headless/main_cli.c')
+
+# Platform-specific configurations
+if target_os == 'posix':
+    conf.CheckLib('m')
+    conf.CheckLib('z')
+    
+    # For unified build, we need both GUI and headless dependencies
+    if env['unified']:
+        # GUI dependencies
+        env.ParseConfig('pkg-config --cflags --libs glfw3')
+        env.Append(LIBS=['GL'])
+        
+        # Check for OSMesa (optional for headless rendering)
+        if conf.TryAction('pkg-config --exists osmesa')[0]:
+            env.ParseConfig('pkg-config --cflags --libs osmesa')
+            env.Append(CPPDEFINES=['HAVE_OSMESA=1'])
+        else:
+            print("OSMesa not found - headless rendering will use software fallback")
+            env.Append(CPPDEFINES=['HEADLESS_SOFTWARE_FALLBACK=1'])
+        
+        # Native file dialogs for GUI
+        if env['nfd_backend'] == 'portal':
+            env.ParseConfig('pkg-config --cflags --libs dbus-1')
+            sources.append('ext_src/nfd/nfd_portal.cpp')
+        elif env['nfd_backend'] == 'gtk':
+            env.ParseConfig('pkg-config --cflags --libs gtk+-3.0')
+            sources.append('ext_src/nfd/nfd_gtk.cpp')
+        
+        # Daemon dependencies (socket server, threading)
+        env.Append(LIBS=['rt'])  # For real-time functions
+        env.Append(CPPDEFINES=['GOXEL_HAS_DAEMON=1'])
+    
+    elif env['legacy_gui']:
+        # GUI-only dependencies
+        env.ParseConfig('pkg-config --cflags --libs glfw3')
+        env.Append(LIBS=['GL'])
+        
+        if env['nfd_backend'] == 'portal':
+            env.ParseConfig('pkg-config --cflags --libs dbus-1')
+            sources.append('ext_src/nfd/nfd_portal.cpp')
+        elif env['nfd_backend'] == 'gtk':
+            env.ParseConfig('pkg-config --cflags --libs gtk+-3.0')
+            sources.append('ext_src/nfd/nfd_gtk.cpp')
+    
+    elif env['legacy_headless']:
+        # Headless-only dependencies
+        if conf.TryAction('pkg-config --exists osmesa')[0]:
+            env.ParseConfig('pkg-config --cflags --libs osmesa')
+            env.Append(CPPDEFINES=['HAVE_OSMESA=1'])
+        else:
+            env.Append(CPPDEFINES=['HEADLESS_SOFTWARE_FALLBACK=1'])
+    
+    env.Append(LIBS=['m', 'dl', 'pthread'])
+
+# Windows compilation support
+if target_os == 'msys':
+    env.Append(CXXFLAGS=['-Wno-attributes', '-Wno-unused-variable',
+                         '-Wno-unused-function'])
+    env.Append(CCFLAGS=['-Wno-error=address'])
+    
+    if env['unified'] or env['legacy_gui']:
+        env.Append(LIBS=['glfw3', 'opengl32', 'z', 'tre', 'gdi32', 'Comdlg32',
+                         'ole32', 'uuid', 'shell32'],
+                   LINKFLAGS='--static')
+        sources += glob.glob('ext_src/glew/glew.c')
+        sources.append('ext_src/nfd/nfd_win.cpp')
+        env.Append(CPPPATH=['ext_src/glew'])
+        env.Append(CPPDEFINES=['GLEW_STATIC', 'FREE_WINDOWS'])
+
+# OSX Compilation support
+if target_os == 'darwin':
+    sources += glob.glob('src/*.m')
+    
+    if env['unified'] or env['legacy_gui']:
+        sources.append('ext_src/nfd/nfd_cocoa.m')
+        env.Append(FRAMEWORKS=['OpenGL', 'Cocoa', 'AppKit', 'UniformTypeIdentifiers'])
+        env.ParseConfig('pkg-config --cflags --libs glfw3')
+    
+    env.Append(LIBS=['m', 'objc'])
+    env.Append(CCFLAGS=['-Wno-deprecated-declarations'])
+    
+    # Handle OSMesa for unified/headless builds
+    if env['unified'] or env['legacy_headless']:
+        osmesa_found = False
+        
+        # Try pkg-config first
+        if conf.TryAction('pkg-config --exists osmesa')[0]:
+            env.ParseConfig('pkg-config --cflags --libs osmesa')
+            env.Append(CPPDEFINES=['HAVE_OSMESA=1'])
+            osmesa_found = True
+        else:
+            # Check common locations
+            for brew_path in ['/opt/homebrew', '/usr/local', '/opt/local']:
+                osmesa_lib = os.path.join(brew_path, 'lib', 'libOSMesa.dylib')
+                osmesa_include = os.path.join(brew_path, 'include', 'GL', 'osmesa.h')
+                
+                if os.path.exists(osmesa_lib) and os.path.exists(osmesa_include):
+                    env.Append(LIBPATH=[os.path.join(brew_path, 'lib')])
+                    env.Append(CPPPATH=[os.path.join(brew_path, 'include')])
+                    env.Append(LIBS=['OSMesa'])
+                    env.Append(CPPDEFINES=['HAVE_OSMESA=1'])
+                    osmesa_found = True
+                    break
+        
+        if not osmesa_found:
+            print("WARNING: OSMesa not found - headless rendering will use software fallback")
+            env.Append(CPPDEFINES=['HEADLESS_SOFTWARE_FALLBACK=1'])
+    
+    env['sound'] = False
+
+# Add external libs
+env.Append(CPPPATH=['ext_src'])
+env.Append(CPPPATH=['ext_src/uthash'])
+env.Append(CPPPATH=['ext_src/stb'])
+
+# Check for libpng (optional, STB fallback available)
+if conf.CheckLib('libpng') or conf.CheckLib('png'):
+    env.Append(CPPDEFINES='HAVE_LIBPNG=1')
+
+# Add stb image write implementation
+sources.append('ext_src/stb/stb_image_write.c')
+
+# Build targets
+if env['c_api']:
+    # Build C API shared library (stub for now)
+    print("C API build not yet implemented for unified build")
+else:
+    # Determine target name
+    if env['unified']:
+        target_name = 'goxel'
+    elif env['legacy_headless']:
+        target_name = 'goxel-headless'
+    elif env['legacy_gui']:
+        target_name = 'goxel-gui'
+    else:
+        target_name = 'goxel'
+    
+    # Build the program
+    program = env.Program(target=target_name, source=sorted(sources))
+    
+    # Create symlink for backward compatibility when building unified
+    if env['unified']:
+        def create_headless_symlink(target, source, env):
+            """Create goxel-headless symlink to goxel binary"""
+            import os
+            symlink_path = 'goxel-headless'
+            if os.path.exists(symlink_path) or os.path.islink(symlink_path):
+                os.remove(symlink_path)
+            os.symlink('goxel', symlink_path)
+            print(f"Created symlink: {symlink_path} -> goxel")
+        
+        # Add symlink creation as post-build action
+        env.AddPostAction(program, create_headless_symlink)
+
+# Print build configuration
+print("\n=== Goxel Build Configuration ===")
+print(f"Mode: {env['mode']}")
+if env['unified']:
+    print("Build type: Unified (GUI + Headless)")
+elif env['legacy_headless']:
+    print("Build type: Legacy Headless-only")
+elif env['legacy_gui']:
+    print("Build type: Legacy GUI-only")
+print(f"Target: {target_name}")
+print("================================\n")

@@ -1,0 +1,56 @@
+[Unit]
+Description=Goxel Daemon - High-Performance Voxel Processing Service
+Documentation=https://goxel.xyz/docs/v14
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/goxel-daemon --config /etc/goxel/goxel-daemon.conf
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+PIDFile=/var/run/goxel/goxel.pid
+
+# User and permissions
+User=goxel
+Group=goxel
+UMask=0002
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/run/goxel /var/log/goxel
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryMax=512M
+CPUQuota=200%
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitInterval=60s
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goxel-daemon
+
+# Watchdog (daemon must send periodic keepalive)
+WatchdogSec=30s
+
+# Environment
+Environment="GOXEL_LOG_LEVEL=info"
+Environment="GOXEL_WORKER_THREADS=4"
+
+[Install]
+WantedBy=multi-user.target

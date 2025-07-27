@@ -1,0 +1,321 @@
+name: Cross-Platform Testing
+
+on:
+  push:
+    branches: [ master, feature/*, v14-daemon ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  GOXEL_VERSION: "14.0.0"
+  DAEMON_SOCKET: "/tmp/goxel-daemon.sock"
+
+jobs:
+  # Linux testing on multiple distributions
+  linux:
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, ubuntu-22.04, ubuntu-latest]
+        compiler: [gcc, clang]
+        include:
+          - os: ubuntu-20.04
+            compiler: gcc
+            cc: gcc-9
+            cxx: g++-9
+          - os: ubuntu-22.04
+            compiler: gcc
+            cc: gcc-11
+            cxx: g++-11
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-20.04
+            compiler: clang
+            cc: clang-10
+            cxx: clang++-10
+          - os: ubuntu-22.04
+            compiler: clang
+            cc: clang-14
+            cxx: clang++-14
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+            
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libglfw3-dev \
+          libglew-dev \
+          libpng-dev \
+          pkg-config \
+          valgrind \
+          strace
+    
+    - name: Build daemon
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+      run: |
+        cd tests
+        make -f Makefile.daemon clean all
+    
+    - name: Run platform tests
+      run: |
+        cd tests/platforms/linux
+        gcc -o test_unix_socket_linux test_unix_socket_linux.c -pthread
+        ./test_unix_socket_linux
+        
+    - name: Run daemon lifecycle tests
+      run: |
+        cd tests
+        ./test_daemon_lifecycle
+        
+    - name: Memory check with Valgrind
+      if: matrix.compiler == 'gcc'
+      run: |
+        cd tests
+        valgrind --leak-check=full --show-leak-kinds=all \
+          --error-exitcode=1 ./test_daemon_lifecycle
+          
+    - name: Performance benchmarks
+      run: |
+        cd tests/performance
+        make benchmark
+        ./benchmark_daemon
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: linux-${{ matrix.os }}-${{ matrix.compiler }}-results
+        path: |
+          tests/results/
+          tests/platforms/results/
+
+  # macOS testing on Intel and ARM64
+  macos:
+    strategy:
+      matrix:
+        os: [macos-12, macos-13, macos-latest]
+        arch: [x86_64, arm64]
+        exclude:
+          # ARM64 only available on newer macOS
+          - os: macos-12
+            arch: arm64
+            
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        brew install glfw glew libpng pkg-config
+        
+    - name: Build daemon
+      run: |
+        cd tests
+        make -f Makefile.daemon clean all
+        
+    - name: Run platform tests
+      run: |
+        cd tests/platforms/macos
+        gcc -o test_unix_socket_macos test_unix_socket_macos.c -pthread
+        ./test_unix_socket_macos
+        gcc -o test_daemon_launchd test_daemon_launchd.c
+        ./test_daemon_launchd
+        gcc -o test_macos_security test_macos_security.c -framework Security
+        ./test_macos_security
+        
+    - name: Test daemon functionality
+      run: |
+        cd tests
+        ./goxel-daemon --test-lifecycle
+        ./goxel-daemon --test-signals
+        
+    - name: Socket connection test
+      run: |
+        cd tests
+        # Start daemon in background
+        ./goxel-daemon --foreground --socket /tmp/test.sock &
+        DAEMON_PID=$!
+        sleep 2
+        
+        # Test connection
+        echo "test" | nc -U /tmp/test.sock || true
+        
+        # Stop daemon
+        kill $DAEMON_PID
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: macos-${{ matrix.os }}-${{ matrix.arch }}-results
+        path: |
+          tests/results/
+          tests/platforms/results/
+
+  # Windows testing (native and WSL2)
+  windows:
+    strategy:
+      matrix:
+        os: [windows-2019, windows-2022, windows-latest]
+        environment: [native, wsl]
+        
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup MSYS2 (native)
+      if: matrix.environment == 'native'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-glfw
+          mingw-w64-x86_64-glew
+          mingw-w64-x86_64-libpng
+          make
+          
+    - name: Build daemon (native)
+      if: matrix.environment == 'native'
+      shell: msys2 {0}
+      run: |
+        cd tests
+        # Windows-specific build adjustments needed
+        echo "Windows native build not yet implemented"
+        
+    - name: Setup WSL
+      if: matrix.environment == 'wsl'
+      uses: Vampire/setup-wsl@v2
+      with:
+        distribution: Ubuntu-22.04
+        
+    - name: Build daemon (WSL)
+      if: matrix.environment == 'wsl'
+      shell: wsl-bash {0}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libglfw3-dev libglew-dev libpng-dev
+        cd tests
+        make -f Makefile.daemon clean all
+        
+    - name: Run tests (WSL)
+      if: matrix.environment == 'wsl'
+      shell: wsl-bash {0}
+      run: |
+        cd tests
+        ./test_daemon_lifecycle
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-${{ matrix.os }}-${{ matrix.environment }}-results
+        path: |
+          tests/results/
+          tests/platforms/results/
+
+  # Alpine Linux (musl libc) testing
+  alpine:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+      
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        apk update
+        apk add build-base glfw-dev glew-dev libpng-dev pkgconfig
+        
+    - name: Build daemon
+      run: |
+        cd tests
+        make -f Makefile.daemon clean all
+        
+    - name: Run tests
+      run: |
+        cd tests
+        ./test_daemon_lifecycle
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: alpine-results
+        path: |
+          tests/results/
+          tests/platforms/results/
+
+  # Performance comparison across platforms
+  performance-summary:
+    needs: [linux, macos, windows, alpine]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: Generate performance report
+      run: |
+        python3 tools/cross_platform_validator.py \
+          --generate-report \
+          --output performance_report.html
+          
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-report
+        path: performance_report.html
+        
+    - name: Comment on PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('performance_report.html', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '## Cross-Platform Test Results\n\n' + report
+          });
+
+  # Security scan
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run CodeQL analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        languages: c, cpp
+        
+    - name: Run security tests
+      run: |
+        cd tests/platforms
+        # Run security-specific tests
+        echo "Security tests placeholder"

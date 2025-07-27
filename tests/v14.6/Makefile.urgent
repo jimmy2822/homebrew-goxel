@@ -1,0 +1,58 @@
+# Goxel v14.6 Urgent Tests Makefile
+# Quick build for immediate daemon validation
+# Author: James O'Brien (Agent-4)
+
+CC = gcc
+CFLAGS = -std=c99 -Wall -Wextra -O2 -g -pthread -D_GNU_SOURCE
+INCLUDES = -I. -I../../src -I../../src/daemon -I../../include
+
+# Test files
+FRAMEWORK = framework/test_framework.c
+TESTS = integration/test_daemon_lifecycle.c \
+        integration/test_socket_connection.c \
+        integration/test_json_rpc_echo.c \
+        performance/test_daemon_baseline.c
+
+# Output
+TARGET = urgent_tests
+
+# Build urgent tests
+$(TARGET): main_urgent_tests.c $(FRAMEWORK) $(TESTS)
+	@echo "Building urgent daemon validation tests..."
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ -lm
+	@echo "Build complete! Run with: ./$(TARGET)"
+
+# Quick run
+run: $(TARGET)
+	@mkdir -p results
+	./$(TARGET)
+
+# Run performance baseline only
+perf: $(TARGET)
+	@mkdir -p results
+	./$(TARGET) --performance
+
+# Run specific suite
+suite: $(TARGET)
+	@if [ -z "$(SUITE)" ]; then \
+		echo "Usage: make suite SUITE=<suite_name>"; \
+		echo "Available: daemon_lifecycle, socket_connection, json_rpc_echo, daemon_baseline"; \
+	else \
+		./$(TARGET) --suite $(SUITE); \
+	fi
+
+# Clean
+clean:
+	rm -f $(TARGET)
+	rm -rf results/
+
+# Help
+help:
+	@echo "Urgent Test Commands:"
+	@echo "  make          - Build urgent tests"
+	@echo "  make run      - Build and run all urgent tests"
+	@echo "  make perf     - Run performance baseline only"
+	@echo "  make suite SUITE=name - Run specific test suite"
+	@echo "  make clean    - Clean build artifacts"
+
+.PHONY: run perf suite clean help
