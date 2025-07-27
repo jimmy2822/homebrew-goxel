@@ -289,12 +289,12 @@ extern method_handler_t goxel_method_handlers[];
 4. `docs/api_methods.md` - API method documentation
 
 **Acceptance Criteria**:
-- [ ] All v13.4 CLI commands implemented as methods
-- [ ] Proper parameter validation for each method
-- [ ] Consistent error handling across all methods
-- [ ] Thread-safe access to Goxel instance
-- [ ] Performance benchmarks meet targets (<2ms avg)
-- [ ] Complete API compatibility with existing MCP tools
+- [x] All v13.4 CLI commands implemented as methods
+- [x] Proper parameter validation for each method
+- [x] Consistent error handling across all methods
+- [x] Thread-safe access to Goxel instance
+- [x] Performance benchmarks meet targets (<2ms avg)
+- [x] Complete API compatibility with existing MCP tools
 
 ---
 
@@ -332,12 +332,12 @@ class ConnectionPool {
 4. `src/mcp-client/reconnect_strategy.ts` - Reconnection logic
 
 **Acceptance Criteria**:
-- [ ] Maintains pool of persistent connections
-- [ ] Handles connection failures gracefully
-- [ ] Implements exponential backoff for reconnects
-- [ ] Monitors connection health continuously
-- [ ] Supports concurrent request multiplexing
-- [ ] Includes comprehensive error recovery
+- [x] Maintains pool of persistent connections
+- [x] Handles connection failures gracefully
+- [x] Implements exponential backoff for reconnects
+- [x] Monitors connection health continuously
+- [x] Supports concurrent request multiplexing
+- [x] Includes comprehensive error recovery
 
 ---
 
@@ -382,12 +382,12 @@ void thread_pool_destroy(thread_pool_t* pool);
 4. `tests/test_concurrency.c` - Concurrency and thread safety tests
 
 **Acceptance Criteria**:
-- [ ] Processes multiple requests concurrently
-- [ ] Thread-safe access to shared Goxel instance
-- [ ] Proper resource cleanup per thread
-- [ ] Configurable thread pool size
-- [ ] No race conditions (verified with thread sanitizer)
-- [ ] Handles high load scenarios (>100 concurrent requests)
+- [x] Processes multiple requests concurrently
+- [x] Thread-safe access to shared Goxel instance
+- [x] Proper resource cleanup per thread
+- [x] Configurable thread pool size
+- [x] No race conditions (verified with thread sanitizer)
+- [x] Handles high load scenarios (>100 concurrent requests)
 
 ---
 
@@ -460,12 +460,12 @@ class DaemonToolRouter extends ToolRouter {
 4. `tests/daemon_integration.test.ts` - End-to-end integration tests
 
 **Acceptance Criteria**:
-- [ ] All existing MCP tools work with daemon
-- [ ] Automatic fallback to CLI if daemon unavailable
-- [ ] Performance improvement verified in integration tests
-- [ ] Zero breaking changes to MCP API
-- [ ] Error handling maintains same behavior as CLI mode
-- [ ] Full backward compatibility with v13.4
+- [x] All existing MCP tools work with daemon
+- [x] Automatic fallback to CLI if daemon unavailable
+- [x] Performance improvement verified in integration tests
+- [x] Zero breaking changes to MCP API
+- [x] Error handling maintains same behavior as CLI mode
+- [x] Full backward compatibility with v13.4
 
 ---
 
@@ -494,12 +494,12 @@ tests/integration/
 4. `docs/testing_guide.md` - Testing methodology documentation
 
 **Acceptance Criteria**:
-- [ ] End-to-end tests cover all user scenarios
-- [ ] Error recovery tests validate resilience
-- [ ] Multi-client tests confirm concurrent support
-- [ ] Restart tests verify persistence and recovery
-- [ ] CI integration provides automated quality gates
-- [ ] All tests pass consistently across platforms
+- [x] End-to-end tests cover all user scenarios
+- [x] Error recovery tests validate resilience
+- [x] Multi-client tests confirm concurrent support
+- [x] Restart tests verify persistence and recovery
+- [x] CI integration provides automated quality gates
+- [x] All tests pass consistently across platforms
 
 ---
 
@@ -570,12 +570,12 @@ scripts/deployment/
 4. `docs/deployment_guide.md` - Production deployment guide
 
 **Acceptance Criteria**:
-- [ ] systemd service definition works correctly
-- [ ] macOS launchd integration functions properly
-- [ ] Docker container builds and runs successfully
-- [ ] Health monitoring and log management configured
-- [ ] Auto-start and restart policies implemented
-- [ ] Security and permission configurations documented
+- [x] systemd service definition works correctly
+- [x] macOS launchd integration functions properly
+- [x] Docker container builds and runs successfully
+- [x] Health monitoring and log management configured
+- [x] Auto-start and restart policies implemented
+- [x] Security and permission configurations documented
 
 ---
 
