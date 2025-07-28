@@ -136,7 +136,7 @@ struct worker_pool {
 static void *worker_thread_func(void *arg);
 static worker_request_t *create_request(void *data, worker_priority_t priority);
 static void destroy_request(worker_request_t *request, worker_pool_t *pool);
-static worker_request_t *dequeue_request(worker_pool_t *pool);
+static worker_request_t *dequeue_request(worker_pool_t *pool) __attribute__((unused));
 static worker_pool_error_t enqueue_request(worker_pool_t *pool, worker_request_t *request);
 static int64_t get_current_time_us(void);
 static void update_stats_on_completion(worker_pool_t *pool, int64_t processing_time_us, bool success);

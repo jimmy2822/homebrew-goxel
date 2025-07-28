@@ -17,15 +17,20 @@
  */
 
 #include "json_rpc.h"
+#include "test_methods.h"
 #include "../utils/json.h"
 #include "../../ext_src/json/json-builder.h"
 #include "../log.h"
 #include "../core/goxel_core.h"
+#include <time.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
+#include <unistd.h>
 
 // ============================================================================
 // UTILITY MACROS
@@ -1137,6 +1142,9 @@ typedef struct {
     const char *description;
 } method_registry_entry_t;
 
+// Include test methods
+#include "test_methods.h"
+
 // Forward declarations for method handlers
 static json_rpc_response_t *handle_goxel_create_project(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_load_project(const json_rpc_request_t *request);
@@ -1151,6 +1159,7 @@ static json_rpc_response_t *handle_goxel_create_layer(const json_rpc_request_t *
 
 // Method registry
 static const method_registry_entry_t g_method_registry[] = {
+    // Goxel API methods
     {"goxel.create_project", handle_goxel_create_project, "Create a new voxel project"},
     {"goxel.load_project", handle_goxel_load_project, "Load a project from file"},
     {"goxel.save_project", handle_goxel_save_project, "Save project to file"},
@@ -1234,6 +1243,8 @@ static bool get_bool_param(const json_rpc_params_t *params, int index, const cha
 // ============================================================================
 // METHOD HANDLER IMPLEMENTATIONS
 // ============================================================================
+
+// Test method implementations are now in test_methods.c
 
 static json_rpc_response_t *handle_goxel_create_project(const json_rpc_request_t *request)
 {
@@ -1374,7 +1385,7 @@ static json_rpc_response_t *handle_goxel_add_voxel(const json_rpc_request_t *req
     LOG_D("Adding voxel at (%d, %d, %d) with color (%d, %d, %d, %d) to layer %d", 
           x, y, z, r, g, b, a, layer_id);
     
-    int result = goxel_core_add_voxel(g_goxel_context, x, y, z, rgba, layer_id);
+    int result = goxel_core_add_voxel(g_goxel_context, x, y, z, (uint8_t*)rgba, layer_id);
     if (result != 0) {
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Failed to add voxel: error code %d", result);
@@ -1631,6 +1642,31 @@ static json_rpc_response_t *handle_goxel_create_layer(const json_rpc_request_t *
 }
 
 // ============================================================================
+// HELPER FUNCTIONS FOR TEST METHODS
+// ============================================================================
+
+bool json_rpc_is_goxel_initialized(void)
+{
+    return g_goxel_context != NULL;
+}
+
+int json_rpc_get_method_count(void)
+{
+    size_t test_method_count = 0;
+    get_test_methods(&test_method_count);
+    return (int)(g_method_registry_size + test_method_count);
+}
+
+int json_rpc_add_voxel_internal(int x, int y, int z, const uint8_t rgba[4], int layer_id)
+{
+    if (!g_goxel_context) {
+        return -1;
+    }
+    // Cast away const - goxel_core_add_voxel doesn't modify the array
+    return goxel_core_add_voxel(g_goxel_context, x, y, z, (uint8_t*)rgba, layer_id);
+}
+
+// ============================================================================
 // PUBLIC API FUNCTIONS
 // ============================================================================
 
@@ -1679,7 +1715,14 @@ json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request)
                                              NULL, &null_id);
     }
     
-    // Find the method handler
+    // Try test methods first (includes echo, version, status)
+    json_rpc_response_t *response = handle_test_method(request->method, request);
+    if (response) {
+        LOG_D("Handling test method: %s", request->method);
+        return response;
+    }
+    
+    // Find the method handler in main registry
     for (size_t i = 0; i < g_method_registry_size; i++) {
         if (strcmp(request->method, g_method_registry[i].name) == 0) {
             LOG_D("Handling method: %s", request->method);
@@ -1701,6 +1744,25 @@ int json_rpc_list_methods(char *buffer, size_t buffer_size)
     }
     
     size_t offset = 0;
+    
+    // List test methods first
+    size_t test_count = 0;
+    const test_method_entry_t *test_methods = get_test_methods(&test_count);
+    
+    for (size_t i = 0; i < test_count; i++) {
+        int written = snprintf(buffer + offset, buffer_size - offset,
+                              "%s - %s\n",
+                              test_methods[i].name,
+                              test_methods[i].description);
+        
+        if (written < 0 || (size_t)written >= buffer_size - offset) {
+            return -1; // Buffer too small
+        }
+        
+        offset += written;
+    }
+    
+    // List main registry methods
     for (size_t i = 0; i < g_method_registry_size; i++) {
         int written = snprintf(buffer + offset, buffer_size - offset,
                               "%s - %s\n",

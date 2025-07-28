@@ -1,8 +1,10 @@
-# 🎉 Goxel v14.0 Release Announcement - Daemon Architecture Revolution
+# 🚧 Goxel v14.0 Development Update - Daemon Architecture Progress
 
-**Release Date**: January 26, 2025  
-**Version**: 14.0.0  
-**Codename**: "Daemon Revolution"
+**Update Date**: January 27, 2025  
+**Version**: 14.0.0-alpha  
+**Codename**: "Daemon Revolution" (In Development)
+
+## ⚠️ IMPORTANT: This is a development update, not a release announcement
 
 ## 🚀 Executive Summary
 

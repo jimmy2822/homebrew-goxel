@@ -21,6 +21,7 @@
 #include "request_queue.h"
 #include "json_rpc.h"
 #include "socket_server.h"
+#include "json_socket_handler.h"
 #include "../core/goxel_core.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +30,15 @@
 #include <getopt.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+
+// Forward declarations
+static int64_t get_current_time_us(void);
+
+// Logging macros
+#define LOG_ERROR(fmt, ...) fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
+#define LOG_WARNING(fmt, ...) fprintf(stderr, "[WARNING] " fmt "\n", ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...) fprintf(stdout, "[INFO] " fmt "\n", ##__VA_ARGS__)
 
 // ============================================================================
 // DAEMON MAIN CONFIGURATION
@@ -192,6 +202,7 @@ static void print_help(void)
 // UTILITY FUNCTIONS
 // ============================================================================
 
+__attribute__((unused))
 static uid_t get_user_id(const char *username)
 {
     if (!username) return 0;
@@ -207,6 +218,7 @@ static uid_t get_user_id(const char *username)
     return 0;
 }
 
+__attribute__((unused))
 static gid_t get_group_id(const char *groupname)
 {
     if (!groupname) return 0;
@@ -602,20 +614,26 @@ static int process_rpc_request(void *request_data, int worker_id, void *context)
     // Use worker-specific Goxel context for thread safety
     void *goxel_ctx = (worker_id < daemon->num_contexts) ? 
                       daemon->goxel_contexts[worker_id] : NULL;
+    (void)goxel_ctx; // TODO: Use this when implementing method execution
     
     // Process the JSON-RPC request
     json_rpc_response_t *response = NULL;
-    json_rpc_result_t result = json_rpc_process_request(data->rpc_request, 
-                                                       goxel_ctx, &response);
+    
+    // Call the actual JSON-RPC method handler
+    response = json_rpc_handle_method(data->rpc_request);
+    
+    json_rpc_result_t result = response ? JSON_RPC_SUCCESS : JSON_RPC_ERROR_UNKNOWN;
     
     // Send response back to client
     if (response) {
         // Serialize response to JSON
         char *response_json = NULL;
-        size_t response_len = 0;
+        size_t response_len = 0; (void)response_len; // Silence unused warning
         json_rpc_result_t serialize_result = json_rpc_serialize_response(response, 
-                                                                        &response_json, 
-                                                                        &response_len);
+                                                                        &response_json);
+        if (serialize_result == JSON_RPC_SUCCESS) {
+            response_len = strlen(response_json);
+        }
         
         if (serialize_result == JSON_RPC_SUCCESS && response_json) {
             // Create socket message
@@ -674,9 +692,18 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
     
     // Parse JSON-RPC request
     json_rpc_request_t *rpc_request = NULL;
-    json_rpc_result_t parse_result = json_rpc_parse_request(message->data, 
-                                                           message->length, 
+    // Null-terminate the message for parsing
+    char *json_str = malloc(message->length + 1);
+    if (!json_str) {
+        LOG_ERROR("Failed to allocate memory for JSON string");
+        return NULL;
+    }
+    memcpy(json_str, message->data, message->length);
+    json_str[message->length] = '\0';
+    
+    json_rpc_result_t parse_result = json_rpc_parse_request(json_str, 
                                                            &rpc_request);
+    free(json_str);
     
     if (parse_result != JSON_RPC_SUCCESS || !rpc_request) {
         // Send error response for invalid requests
@@ -688,8 +715,9 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
         error_response.error.data = NULL;
         
         char *error_json = NULL;
-        size_t error_len = 0;
-        if (json_rpc_serialize_response(&error_response, &error_json, &error_len) == JSON_RPC_SUCCESS) {
+        size_t error_len = 0; (void)error_len; // Silence unused warning
+        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
+            error_len = strlen(error_json);
             socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
             free(error_json);
             return error_msg;
@@ -726,8 +754,9 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
         error_response.error.data = NULL;
         
         char *error_json = NULL;
-        size_t error_len = 0;
-        if (json_rpc_serialize_response(&error_response, &error_json, &error_len) == JSON_RPC_SUCCESS) {
+        size_t error_len = 0; (void)error_len; // Silence unused warning
+        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
+            error_len = strlen(error_json);
             socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
             free(error_json);
             json_rpc_free_id(&error_response.id);
@@ -766,11 +795,26 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         return NULL;
     }
     
-    // Initialize Goxel contexts (mock for now)
-    for (int i = 0; i < daemon->num_contexts; i++) {
-        // daemon->goxel_contexts[i] = goxel_core_create_context();
-        daemon->goxel_contexts[i] = (void*)(intptr_t)(i + 1); // Mock context
+    // Initialize Goxel contexts - one per worker thread
+    // For now, we'll initialize the first context only and share it
+    // TODO: Create separate contexts per worker for true thread isolation
+    json_rpc_result_t init_result = json_rpc_init_goxel_context();
+    if (init_result != JSON_RPC_SUCCESS) {
+        LOG_ERROR("Failed to initialize Goxel context: %s", json_rpc_result_string(init_result));
+        pthread_mutex_destroy(&daemon->state_mutex);
+        free(daemon->goxel_contexts);
+        free(daemon);
+        return NULL;
     }
+    
+    for (int i = 0; i < daemon->num_contexts; i++) {
+        // For now, all workers share the same context
+        // TODO: Implement per-worker contexts with proper synchronization
+        daemon->goxel_contexts[i] = (void*)(intptr_t)(1); // Placeholder - actual context managed by json_rpc
+    }
+    
+    // Set up JSON socket handler
+    json_socket_set_handler(handle_socket_message, daemon);
     
     // Create socket server
     socket_server_config_t server_config = socket_server_default_config();
@@ -779,6 +823,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     server_config.thread_per_client = false;
     server_config.thread_pool_size = config->worker_threads;
     server_config.msg_handler = handle_socket_message;
+    server_config.client_handler = json_socket_client_handler;  // Use JSON client handler
     server_config.user_data = daemon;
     
     daemon->socket_server = socket_server_create(&server_config);
@@ -860,9 +905,8 @@ static void destroy_concurrent_daemon(concurrent_daemon_t *daemon)
     
     // Cleanup Goxel contexts
     if (daemon->goxel_contexts) {
-        for (int i = 0; i < daemon->num_contexts; i++) {
-            // goxel_core_destroy_context(daemon->goxel_contexts[i]);
-        }
+        // Cleanup the shared Goxel context
+        json_rpc_cleanup_goxel_context();
         free(daemon->goxel_contexts);
     }
     
@@ -948,16 +992,16 @@ static int run_daemon(const program_config_t *prog_config)
         worker_stats_t worker_stats;
         if (worker_pool_get_stats(daemon->worker_pool, &worker_stats) == WORKER_POOL_SUCCESS) {
             printf("Final statistics:\n");
-            printf("  Requests processed: %lu\n", worker_stats.requests_processed);
-            printf("  Requests failed: %lu\n", worker_stats.requests_failed);
-            printf("  Average processing time: %lu μs\n", worker_stats.average_processing_time_us);
+            printf("  Requests processed: %llu\n", (unsigned long long)worker_stats.requests_processed);
+            printf("  Requests failed: %llu\n", (unsigned long long)worker_stats.requests_failed);
+            printf("  Average processing time: %llu μs\n", (unsigned long long)worker_stats.average_processing_time_us);
         }
         
         socket_server_stats_t server_stats;
         if (socket_server_get_stats(daemon->socket_server, &server_stats) == SOCKET_SUCCESS) {
-            printf("  Total connections: %d\n", server_stats.total_connections);
-            printf("  Messages received: %lu\n", server_stats.messages_received);
-            printf("  Messages sent: %lu\n", server_stats.messages_sent);
+            printf("  Total connections: %llu\n", (unsigned long long)server_stats.total_connections);
+            printf("  Messages received: %llu\n", (unsigned long long)server_stats.messages_received);
+            printf("  Messages sent: %llu\n", (unsigned long long)server_stats.messages_sent);
         }
     }
     

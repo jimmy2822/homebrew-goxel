@@ -6,7 +6,7 @@ CFLAGS = -Wall -O2 -std=c99 -pthread -g
 LDFLAGS = -pthread -lm
 
 # Performance test executables
-TESTS = latency_benchmark throughput_test memory_profiling stress_test comparison_framework
+TESTS = latency_benchmark throughput_test memory_profiling stress_test comparison_framework cli_baseline concurrency_test
 
 # Default target
 all: $(TESTS)
@@ -27,6 +27,12 @@ stress_test: stress_test.c
 comparison_framework: comparison_framework.c
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
+cli_baseline: cli_baseline.c
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+
+concurrency_test: concurrency_test.c
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+
 # Development targets
 debug: CFLAGS += -DDEBUG -O0
 debug: $(TESTS)
@@ -42,6 +48,8 @@ test: $(TESTS)
 	@./memory_profiling 2 > /dev/null && echo "✓ Memory profiling works" || echo "✗ Memory profiling failed"
 	@./stress_test 2 > /dev/null && echo "✓ Stress test works" || echo "✗ Stress test failed"
 	@./comparison_framework > /dev/null && echo "✓ Comparison framework works" || echo "✗ Comparison framework failed"
+	@./cli_baseline --version > /dev/null 2>&1 && echo "✓ CLI baseline works" || echo "✗ CLI baseline failed"
+	@./concurrency_test 2 10 > /dev/null && echo "✓ Concurrency test works" || echo "✗ Concurrency test failed"
 
 # Cleanup
 clean:
@@ -75,5 +83,7 @@ help:
 	@echo "  memory_profiling     Build memory analysis tool"
 	@echo "  stress_test          Build stress testing tool"
 	@echo "  comparison_framework Build performance comparison tool"
+	@echo "  cli_baseline         Build CLI baseline measurement tool"
+	@echo "  concurrency_test     Build concurrent client testing tool"
 
 .PHONY: all debug profile test clean install help

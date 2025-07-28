@@ -28,6 +28,12 @@ cli-tools:
 cli-tools-release:
 	scons $(JOBS) mode=release cli_tools=1
 
+daemon:
+	scons $(JOBS) daemon=1
+
+daemon-release:
+	scons $(JOBS) mode=release daemon=1
+
 run:
 	./goxel
 
@@ -36,6 +42,9 @@ run-headless:
 
 run-cli:
 	./goxel-cli
+
+run-daemon:
+	./goxel-daemon
 
 clean: .FORCE
 	scons -c

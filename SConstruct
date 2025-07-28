@@ -30,6 +30,7 @@ vars.AddVariables(
     BoolVariable('gui', 'Build with GUI support', True),
     BoolVariable('cli_tools', 'Build CLI tools', False),
     BoolVariable('c_api', 'Build C API shared library', False),
+    BoolVariable('daemon', 'Build daemon server', False),
     PathVariable('config_file', 'Config file to use', 'src/config.h'),
 )
 
@@ -97,6 +98,8 @@ if env['cli_tools']:
     env.Append(CPPDEFINES=['GOXEL_CLI_TOOLS=1'])
 if env['c_api']:
     env.Append(CPPDEFINES=['GOXEL_C_API=1'])
+if env['daemon']:
+    env.Append(CPPDEFINES=['GOXEL_DAEMON=1'])
 
 # Get all the c and c++ files in src, recursively.
 sources = []
@@ -118,13 +121,21 @@ if not env['headless']:
 
 # Include headless sources if building headless
 headless_sources = []
-if env['headless'] or env['cli_tools']:
+if env['headless'] or env['cli_tools'] or env['daemon']:
     for root, dirnames, filenames in os.walk('src/headless'):
         for filename in filenames:
             if filename.endswith('.c') or filename.endswith('.cpp'):
                 # Skip the stub file since we have the real implementation
                 if filename != 'goxel_headless_api_stub.c':
                     headless_sources.append(os.path.join(root, filename))
+
+# Include daemon sources if building daemon
+daemon_sources = []
+if env['daemon']:
+    for root, dirnames, filenames in os.walk('src/daemon'):
+        for filename in filenames:
+            if filename.endswith('.c') or filename.endswith('.cpp'):
+                daemon_sources.append(os.path.join(root, filename))
 
 # Include remaining src files (excluding core/, gui/, headless/ subdirs)
 other_sources = []
@@ -149,20 +160,28 @@ gui_dependent_files = [
     'utils/geometry.c', 'utils/gl.c', 'utils/img.c', 'utils/ini.c',
     'utils/json.c', 'utils/mo_reader.c', 'utils/mustache.c', 'utils/path.c',
     'utils/sound.c', 'utils/texture.c', 'utils/vec.c',
+    # Additional GUI-dependent files for daemon build
+    'main_gui.c', 'main_headless.c', 'main_unified.c',  # All main entry points
+    'theme.c', 'render.c', 'gizmos.c', 'gesture.c', 'gesture3d.c',
+    'model3d.c', 'action.c', 'tests.c', 'system.c', 'shader_cache.c',
+    'i18n.c',
 ]
 
 # Directories with GUI dependencies for CLI builds
-gui_dependent_dirs = ['tools', 'filters', 'formats', 'utils']
+gui_dependent_dirs = ['tools', 'filters']
+# For headless and CLI builds, exclude formats and utils (they use core/ versions)
+if env['headless'] or env['cli_tools'] or env['daemon']:
+    gui_dependent_dirs.extend(['formats', 'utils'])
 
 for root, dirnames, filenames in os.walk('src'):
     # Skip subdirectories we handle separately
-    if 'core' in root or 'gui' in root or 'headless' in root:
+    if 'core' in root or 'gui' in root or 'headless' in root or 'daemon' in root:
         continue
     
     for filename in filenames:
         if filename.endswith('.c') or filename.endswith('.cpp'):
-            # For CLI/headless builds, exclude GUI-dependent files and directories
-            if env['headless'] or env['cli_tools']:
+            # For CLI/headless/daemon builds, exclude GUI-dependent files and directories
+            if env['headless'] or env['cli_tools'] or env['daemon']:
                 if filename in gui_dependent_files:
                     continue
                 # Check if file is in GUI-dependent directory
@@ -176,11 +195,18 @@ for root, dirnames, filenames in os.walk('src'):
             other_sources.append(os.path.join(root, filename))
 
 sources = core_sources + other_sources
-# Include GUI sources only if NOT building headless OR CLI tools
-if not env['headless'] and not env['cli_tools']:
+# Include GUI sources only if NOT building headless OR CLI tools OR daemon
+if not env['headless'] and not env['cli_tools'] and not env['daemon']:
     sources += gui_sources
 if env['headless'] or env['cli_tools']:
     sources += headless_sources
+if env['daemon']:
+    sources += daemon_sources
+    # Daemon needs headless sources for rendering and texture support
+    # but not the main CLI entry point
+    for source in headless_sources:
+        if 'main_cli.c' not in source and source not in sources:
+            sources.append(source)
 
 # Use CLI main for CLI tools build
 if env['cli_tools'] and not env['headless']:
@@ -190,14 +216,28 @@ if env['cli_tools'] and not env['headless']:
         sources.remove(cli_main)
     sources.append(cli_main)
 
+# Use daemon main for daemon build
+if env['daemon']:
+    # For daemon, use the daemon main entry point
+    daemon_main = 'src/daemon/daemon_main.c'
+    if daemon_main in sources:
+        sources.remove(daemon_main)
+    sources.append(daemon_main)
+
 # Check for libpng (but skip for headless mode to use STB instead).
 if not env['headless'] and conf.CheckLibWithHeader('libpng', 'png.h', 'c'):
+    env.Append(CPPDEFINES='HAVE_LIBPNG=1')
+    
+# Daemon mode needs libpng on macOS for texture loading
+if env['daemon'] and target_os == 'darwin':
+    # Use pkg-config to get proper libpng settings
+    env.ParseConfig('pkg-config --cflags --libs libpng')
     env.Append(CPPDEFINES='HAVE_LIBPNG=1')
 
 # Linux compilation support.
 if target_os == 'posix':
-    if env['headless']:
-        # Headless mode uses OSMesa for offscreen rendering
+    if env['headless'] or env['daemon']:
+        # Headless/daemon mode uses OSMesa for offscreen rendering
         env.Append(LIBS=['OSMesa', 'm', 'dl', 'pthread'])
         env.Append(CPPDEFINES=['OSMESA_RENDERING=1'])
     else:
@@ -234,15 +274,20 @@ if target_os == 'msys':
 # OSX Compilation support.
 if target_os == 'darwin':
     sources += glob.glob('src/*.m')
-    sources.append('ext_src/nfd/nfd_cocoa.m')
-    env.Append(FRAMEWORKS=[
-        'OpenGL', 'Cocoa', 'AppKit', 'UniformTypeIdentifiers'])
+    if not env['daemon']:
+        # Only include native file dialog for GUI mode
+        sources.append('ext_src/nfd/nfd_cocoa.m')
+        env.Append(FRAMEWORKS=[
+            'OpenGL', 'Cocoa', 'AppKit', 'UniformTypeIdentifiers'])
+    else:
+        # Daemon needs OpenGL for rendering
+        env.Append(FRAMEWORKS=['OpenGL'])
     env.Append(LIBS=['m', 'objc'])
     # Fix warning in noc_file_dialog (the code should be fixed instead).
     env.Append(CCFLAGS=['-Wno-deprecated-declarations'])
     
-    # Handle headless mode for macOS
-    if env['headless']:
+    # Handle headless/daemon mode for macOS
+    if env['headless'] or env['daemon']:
         osmesa_found = False
         
         # Try to find OSMesa via pkg-config first
@@ -430,6 +475,8 @@ if env['headless']:
     target_name = 'goxel-headless'
 elif env['cli_tools']:
     target_name = 'goxel-cli'
+elif env['daemon']:
+    target_name = 'goxel-daemon'
 else:
     target_name = 'goxel'
 

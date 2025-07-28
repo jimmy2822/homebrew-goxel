@@ -472,6 +472,33 @@ json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request);
  */
 int json_rpc_list_methods(char *buffer, size_t buffer_size);
 
+/**
+ * Checks if the Goxel context is initialized.
+ * 
+ * @return true if initialized, false otherwise
+ */
+bool json_rpc_is_goxel_initialized(void);
+
+/**
+ * Gets the number of registered methods.
+ * 
+ * @return Number of methods available
+ */
+int json_rpc_get_method_count(void);
+
+/**
+ * Internal function to add a voxel using the Goxel context.
+ * Used by both add_voxel and add_voxels methods.
+ * 
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param z Z coordinate
+ * @param rgba Color array [r, g, b, a]
+ * @param layer_id Layer ID (0 for default)
+ * @return 0 on success, error code on failure
+ */
+int json_rpc_add_voxel_internal(int x, int y, int z, const uint8_t rgba[4], int layer_id);
+
 #ifdef __cplusplus
 }
 #endif
