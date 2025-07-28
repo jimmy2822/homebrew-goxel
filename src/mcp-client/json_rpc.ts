@@ -25,8 +25,6 @@ import {
   JsonRpcId,
   JsonRpcParams,
   JsonRpcErrorCode,
-  isJsonRpcSuccessResponse,
-  isJsonRpcErrorResponse,
 } from './types';
 
 /**
@@ -60,16 +58,13 @@ export class JsonRpcProtocolHandler {
     // Generate ID if not provided
     const requestId = id !== undefined ? id : this.generateRequestId();
 
-    const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
+    // Build request object dynamically to avoid readonly property issues
+    const request = {
+      jsonrpc: '2.0' as const,
       method,
       id: requestId,
-    };
-
-    // Only include params if provided
-    if (params !== undefined) {
-      request.params = params;
-    }
+      ...(params !== undefined && { params }),
+    } as JsonRpcRequest;
 
     return request;
   }
@@ -90,15 +85,12 @@ export class JsonRpcProtocolHandler {
       throw new Error('Method name must be a non-empty string');
     }
 
-    const notification: JsonRpcNotification = {
-      jsonrpc: '2.0',
+    // Build notification object dynamically to avoid readonly property issues
+    const notification = {
+      jsonrpc: '2.0' as const,
       method,
-    };
-
-    // Only include params if provided
-    if (params !== undefined) {
-      notification.params = params;
-    }
+      ...(params !== undefined && { params }),
+    } as JsonRpcNotification;
 
     return notification;
   }
@@ -136,14 +128,12 @@ export class JsonRpcProtocolHandler {
     message: string,
     data?: unknown
   ): JsonRpcErrorResponse {
-    const error: JsonRpcError = {
+    // Build error object dynamically to avoid readonly property issues
+    const error = {
       code,
       message,
-    };
-
-    if (data !== undefined) {
-      error.data = data;
-    }
+      ...(data !== undefined && { data }),
+    } as JsonRpcError;
 
     return {
       jsonrpc: '2.0',

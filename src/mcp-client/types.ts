@@ -319,33 +319,33 @@ export interface RenderOptions {
 // ============================================================================
 
 /**
- * Available daemon methods
+ * Available daemon methods (matching actual daemon implementation)
  */
-export const enum DaemonMethod {
-  // System methods
+export enum DaemonMethod {
+  // Test/Debug methods (currently implemented)
+  ECHO = 'echo',
+  VERSION = 'version',
+  STATUS = 'status',
+  PING = 'ping',
+  LIST_METHODS = 'list_methods',
+  ADD_VOXELS = 'add_voxels',
+  
+  // Future methods (not yet implemented in daemon)
   GET_VERSION = 'get_version',
   GET_STATUS = 'get_status',
   SHUTDOWN = 'shutdown',
-  
-  // Project methods
   CREATE_PROJECT = 'create_project',
   LOAD_PROJECT = 'load_project',
   SAVE_PROJECT = 'save_project',
   GET_PROJECT_INFO = 'get_project_info',
-  
-  // Voxel operations
   ADD_VOXEL = 'add_voxel',
   REMOVE_VOXEL = 'remove_voxel',
   GET_VOXEL = 'get_voxel',
   CLEAR_VOXELS = 'clear_voxels',
-  
-  // Layer operations
   CREATE_LAYER = 'create_layer',
   DELETE_LAYER = 'delete_layer',
   GET_LAYERS = 'get_layers',
   SET_ACTIVE_LAYER = 'set_active_layer',
-  
-  // Export/Import
   EXPORT_PROJECT = 'export_project',
   IMPORT_MODEL = 'import_model',
   RENDER_IMAGE = 'render_image',

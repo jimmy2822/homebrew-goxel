@@ -767,7 +767,21 @@ export class GoxelDaemonClient extends EventEmitter {
    */
   private processReceivedMessage(messageStr: string): void {
     try {
-      const message = JSON.parse(messageStr) as JsonRpcResponse | JsonRpcNotification;
+      // Clean up the message - daemon might send binary data before JSON
+      const jsonStart = messageStr.indexOf('{');
+      const jsonEnd = messageStr.lastIndexOf('}') + 1;
+      
+      let cleanedMessage = messageStr;
+      if (jsonStart !== -1 && jsonEnd > jsonStart && jsonStart > 0) {
+        cleanedMessage = messageStr.substring(jsonStart, jsonEnd);
+        
+        if (this.config.debug) {
+          // eslint-disable-next-line no-console
+          console.log('[GoxelDaemonClient] Cleaned message:', cleanedMessage);
+        }
+      }
+      
+      const message = JSON.parse(cleanedMessage) as JsonRpcResponse | JsonRpcNotification;
       this.statistics.responsesReceived++;
 
       // Emit message event

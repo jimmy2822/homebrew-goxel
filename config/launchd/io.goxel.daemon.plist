@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Service Identity -->
+    <key>Label</key>
+    <string>io.goxel.daemon</string>
+    
+    <!-- Program Configuration -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/goxel-daemon</string>
+        <string>--foreground</string>
+        <string>--socket</string>
+        <string>/tmp/goxel-daemon.sock</string>
+        <string>--workers</string>
+        <string>4</string>
+        <string>--max-connections</string>
+        <string>256</string>
+        <string>--verbose</string>
+    </array>
+    
+    <!-- Working Directory -->
+    <key>WorkingDirectory</key>
+    <string>/usr/local/var/lib/goxel</string>
+    
+    <!-- Service Management -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <!-- Resource Limits -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+        <key>NumberOfProcesses</key>
+        <integer>32768</integer>
+    </dict>
+    
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/goxel/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/goxel/daemon-error.log</string>
+    
+    <!-- Environment -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>GOXEL_HEADLESS</key>
+        <string>1</string>
+        <key>OSMESA_RENDERING</key>
+        <string>1</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    
+    <!-- Security -->
+    <key>UserName</key>
+    <string>_goxel</string>
+    <key>GroupName</key>
+    <string>_goxel</string>
+    
+    <!-- Process Management -->
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    
+    <!-- Networking (if needed) -->
+    <key>Sockets</key>
+    <dict>
+        <key>Listeners</key>
+        <dict>
+            <key>SockServiceName</key>
+            <string>goxel-daemon</string>
+            <key>SockType</key>
+            <string>dgram</string>
+            <key>SockFamily</key>
+            <string>Unix</string>
+            <key>SockPathName</key>
+            <string>/tmp/goxel-daemon.sock</string>
+            <key>SockPathMode</key>
+            <integer>438</integer> <!-- 0666 in decimal -->
+        </dict>
+    </dict>
+</dict>
+</plist>

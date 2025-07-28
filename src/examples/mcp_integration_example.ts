@@ -12,7 +12,6 @@ import {
   ClientEvent,
   ConnectionError,
   JsonRpcClientError,
-  VoxelCoordinates,
   RgbaColor,
   ExportOptions,
 } from '../index';
@@ -31,7 +30,7 @@ class GoxelMCPToolHandler {
       retryAttempts: 3,
       retryDelay: 1000,
       autoReconnect: true,
-      debug: process.env.DEBUG === 'true',
+      debug: process.env['DEBUG'] === 'true',
     });
 
     // Setup event handlers
@@ -133,7 +132,7 @@ class GoxelMCPToolHandler {
         path: params.path,
       };
 
-      await this.client.call(DaemonMethod.EXPORT_PROJECT, exportOptions);
+      await this.client.call(DaemonMethod.EXPORT_PROJECT, exportOptions as unknown as Record<string, unknown>);
       
       return {
         success: true,
@@ -176,8 +175,12 @@ class GoxelMCPToolHandler {
     this.ensureConnected();
 
     try {
-      const results = [];
-      const errors = [];
+      const results: unknown[] = [];
+      const errors: Array<{
+        error: boolean;
+        voxel: { x: number; y: number; z: number; color: string };
+        message: string;
+      }> = [];
 
       // Process voxels in batches for better performance
       const batchSize = 50;
@@ -203,8 +206,12 @@ class GoxelMCPToolHandler {
         const batchResults = await Promise.all(promises);
         
         batchResults.forEach(result => {
-          if (result && typeof result === 'object' && 'error' in result) {
-            errors.push(result);
+          if (result && typeof result === 'object' && 'error' in result && 'voxel' in result && 'message' in result) {
+            errors.push(result as {
+              error: boolean;
+              voxel: { x: number; y: number; z: number; color: string };
+              message: string;
+            });
           } else {
             results.push(result);
           }

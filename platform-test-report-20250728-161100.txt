@@ -1,0 +1,39 @@
+Goxel v14.0 Daemon Platform Test Report
+======================================
+
+Platform: macos
+Date: Mon Jul 28 16:11:00 CST 2025
+Status: PASSED
+
+System Information:
+------------------
+OS: Darwin
+Kernel: 24.5.0
+Architecture: arm64
+macOS Version: 15.5
+
+Build Environment:
+-----------------
+SCons: SCons by Steven Knight et al.:
+GCC: Apple clang version 17.0.0 (clang-1700.0.13.3)
+pkg-config: 2.5.1
+
+Dependencies:
+------------
+libpng: 1.6.50
+glfw3: 3.4.0
+osmesa: Not found
+
+Binary Information:
+------------------
+Binary size: 5.7M
+Binary dependencies:
+/Users/jimmy/jimmy_side_projects/goxel/goxel-daemon:
+	/opt/homebrew/opt/libpng/lib/libpng16.16.dylib (compatibility version 67.0.0, current version 67.0.0)
+	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+	/System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL (compatibility version 1.0.0, current version 1.0.0)
+	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1900.180.0)
+
+Test Results:
+------------

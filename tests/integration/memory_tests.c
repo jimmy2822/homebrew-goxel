@@ -404,7 +404,7 @@ static void* resource_monitor_thread(void *arg)
     while (!ctx->stop_monitoring && ctx->daemon_running) {
         pthread_mutex_lock(&ctx->monitor_mutex);
         
-        if (ctx->snapshot_count < sizeof(ctx->snapshots) / sizeof(ctx->snapshots[0])) {
+        if (ctx->snapshot_count < (int)(sizeof(ctx->snapshots) / sizeof(ctx->snapshots[0]))) {
             take_resource_snapshot(ctx, &ctx->snapshots[ctx->snapshot_count]);
             
             resource_snapshot_t *snapshot = &ctx->snapshots[ctx->snapshot_count];
@@ -736,9 +736,9 @@ static bool run_memory_tests(memory_test_context_t *ctx)
 
 static void print_memory_test_summary(memory_test_context_t *ctx)
 {
-    printf("\n" "=" * 60 "\n");
+    printf("\n============================================================\n");
     printf("🎯 MEMORY TEST SUMMARY\n");
-    printf("=" * 60 "\n");
+    printf("============================================================\n");
     
     printf("\n📋 Test Overview:\n");
     printf("  Total Operations: %d\n", ctx->total_operations);
@@ -786,14 +786,14 @@ static void print_memory_test_summary(memory_test_context_t *ctx)
         printf("  Run 'cat /tmp/goxel_valgrind.log' for detailed leak analysis\n");
     }
     
-    printf("=" * 60 "\n");
+    printf("============================================================\n");
 }
 
 // ============================================================================
 // MAIN EXECUTION
 // ============================================================================
 
-int main(int argc, char *argv[])
+int main(int argc __attribute__((unused)), char *argv[] __attribute__((unused)))
 {
     printf("🧠 Goxel v14.0 Memory Leak and Resource Usage Testing\n");
     printf("======================================================\n");
