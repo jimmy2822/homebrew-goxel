@@ -35,7 +35,7 @@
 #define WORKER_POOL_MAX_WORKERS 64             /**< Maximum number of workers */
 #define WORKER_POOL_MIN_QUEUE_SIZE 1           /**< Minimum queue capacity */
 #define WORKER_POOL_MAX_QUEUE_SIZE 65536       /**< Maximum queue capacity */
-#define WORKER_POOL_DEFAULT_WORKERS 4          /**< Default number of workers */
+#define WORKER_POOL_DEFAULT_WORKERS 8          /**< Default number of workers */
 #define WORKER_POOL_DEFAULT_QUEUE_SIZE 1024    /**< Default queue capacity */
 #define WORKER_POOL_DEFAULT_SHUTDOWN_TIMEOUT 5000 /**< Default shutdown timeout (ms) */
 #define WORKER_POOL_ERROR_MSG_SIZE 256         /**< Error message buffer size */

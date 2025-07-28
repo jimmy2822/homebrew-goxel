@@ -464,6 +464,15 @@ void json_rpc_cleanup_goxel_context(void);
 json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request);
 
 /**
+ * Handles a batch of JSON-RPC requests.
+ * 
+ * @param json_str JSON string containing either a single request or an array of requests
+ * @param response_str Pointer to store the response JSON string (caller must free)
+ * @return JSON_RPC_SUCCESS on success, error code on failure
+ */
+json_rpc_result_t json_rpc_handle_batch(const char *json_str, char **response_str);
+
+/**
  * Lists all available Goxel API methods with descriptions.
  * 
  * @param buffer Buffer to write method list to

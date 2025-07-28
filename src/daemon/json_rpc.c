@@ -1737,6 +1737,121 @@ json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request)
                                          error_msg, NULL, &request->id);
 }
 
+// Helper function to serialize JSON value to string
+static char *json_value_to_string(json_value *value)
+{
+    if (!value) return NULL;
+    
+    size_t size = json_measure(value);
+    char *str = malloc(size);
+    if (!str) return NULL;
+    
+    json_serialize(str, value);
+    return str;
+}
+
+json_rpc_result_t json_rpc_handle_batch(const char *json_str, char **response_str)
+{
+    if (!json_str || !response_str) {
+        return JSON_RPC_ERROR_INVALID_PARAMETER;
+    }
+    
+    *response_str = NULL;
+    
+    // Parse the JSON
+    json_settings settings = { 0 };
+    char error[json_error_max];
+    json_value *root = json_parse_ex(&settings, json_str, strlen(json_str), error);
+    
+    if (!root) {
+        // Parse error - return single error response
+        json_rpc_response_t *error_resp = json_rpc_create_response_error(
+            JSON_RPC_PARSE_ERROR, "Parse error", NULL, NULL);
+        json_rpc_serialize_response(error_resp, response_str);
+        json_rpc_free_response(error_resp);
+        return JSON_RPC_SUCCESS;
+    }
+    
+    json_value *responses = NULL;
+    bool is_batch = (root->type == json_array);
+    
+    if (is_batch) {
+        // Batch request - process each request
+        responses = json_array_new(root->u.array.length);
+        
+        for (unsigned int i = 0; i < root->u.array.length; i++) {
+            json_value *req_val = root->u.array.values[i];
+            char *req_str = json_value_to_string(req_val);
+            
+            if (!req_str) continue;
+            
+            json_rpc_request_t *request = NULL;
+            json_rpc_result_t parse_result = json_rpc_parse_request(req_str, &request);
+            
+            if (parse_result == JSON_RPC_SUCCESS && request) {
+                // Process the request
+                json_rpc_response_t *response = json_rpc_handle_method(request);
+                
+                if (response) {
+                    // Serialize response to JSON value
+                    char *resp_str = NULL;
+                    if (json_rpc_serialize_response(response, &resp_str) == JSON_RPC_SUCCESS && resp_str) {
+                        json_value *resp_val = json_parse(resp_str, strlen(resp_str));
+                        if (resp_val) {
+                            json_array_push(responses, resp_val);
+                        }
+                        free(resp_str);
+                    }
+                    json_rpc_free_response(response);
+                }
+                
+                json_rpc_free_request(request);
+            } else {
+                // Invalid request - add error response
+                json_rpc_response_t *error_resp = json_rpc_create_response_error(
+                    JSON_RPC_INVALID_REQUEST, "Invalid Request", NULL, NULL);
+                char *error_str = NULL;
+                if (json_rpc_serialize_response(error_resp, &error_str) == JSON_RPC_SUCCESS && error_str) {
+                    json_value *error_val = json_parse(error_str, strlen(error_str));
+                    if (error_val) {
+                        json_array_push(responses, error_val);
+                    }
+                    free(error_str);
+                }
+                json_rpc_free_response(error_resp);
+            }
+            
+            free(req_str);
+        }
+        
+        // Serialize the response array
+        *response_str = json_value_to_string(responses);
+        json_value_free(responses);
+    } else {
+        // Single request
+        json_rpc_request_t *request = NULL;
+        json_rpc_result_t parse_result = json_rpc_parse_request(json_str, &request);
+        
+        if (parse_result == JSON_RPC_SUCCESS && request) {
+            json_rpc_response_t *response = json_rpc_handle_method(request);
+            if (response) {
+                json_rpc_serialize_response(response, response_str);
+                json_rpc_free_response(response);
+            }
+            json_rpc_free_request(request);
+        } else {
+            // Invalid request
+            json_rpc_response_t *error_resp = json_rpc_create_response_error(
+                JSON_RPC_INVALID_REQUEST, "Invalid Request", NULL, NULL);
+            json_rpc_serialize_response(error_resp, response_str);
+            json_rpc_free_response(error_resp);
+        }
+    }
+    
+    json_value_free(root);
+    return JSON_RPC_SUCCESS;
+}
+
 int json_rpc_list_methods(char *buffer, size_t buffer_size)
 {
     if (!buffer || buffer_size == 0) {

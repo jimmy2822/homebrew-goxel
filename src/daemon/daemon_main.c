@@ -482,7 +482,7 @@ static int parse_command_line(int argc, char *argv[], program_config_t *config)
     config->log_file = DEFAULT_LOG_PATH;
     config->working_dir = "/";
     // Concurrent processing defaults
-    config->worker_threads = 4;
+    config->worker_threads = 8;
     config->queue_size = 1024;
     config->enable_priority_queue = false;
     config->max_connections = 256;
@@ -690,8 +690,6 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
         return NULL;
     }
     
-    // Parse JSON-RPC request
-    json_rpc_request_t *rpc_request = NULL;
     // Null-terminate the message for parsing
     char *json_str = malloc(message->length + 1);
     if (!json_str) {
@@ -701,8 +699,32 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
     memcpy(json_str, message->data, message->length);
     json_str[message->length] = '\0';
     
-    json_rpc_result_t parse_result = json_rpc_parse_request(json_str, 
-                                                           &rpc_request);
+    // Check if this is a batch request by peeking at the first character
+    const char *trimmed = json_str;
+    while (*trimmed && (*trimmed == ' ' || *trimmed == '\t' || *trimmed == '\n' || *trimmed == '\r')) {
+        trimmed++;
+    }
+    
+    bool is_batch = (*trimmed == '[');
+    
+    if (is_batch) {
+        // Handle batch request synchronously for now
+        // TODO: Consider processing batch requests in parallel
+        char *response_str = NULL;
+        json_rpc_result_t batch_result = json_rpc_handle_batch(json_str, &response_str);
+        free(json_str);
+        
+        if (batch_result == JSON_RPC_SUCCESS && response_str) {
+            socket_message_t *response_msg = socket_message_create_json(message->id, 0, response_str);
+            free(response_str);
+            return response_msg;
+        }
+        return NULL;
+    }
+    
+    // Single request - process asynchronously
+    json_rpc_request_t *rpc_request = NULL;
+    json_rpc_result_t parse_result = json_rpc_parse_request(json_str, &rpc_request);
     free(json_str);
     
     if (parse_result != JSON_RPC_SUCCESS || !rpc_request) {

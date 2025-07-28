@@ -64,3 +64,19 @@ coverage/
 .vscode/
 .idea/
 *.sublime-*
+
+# Performance test binaries
+tests/performance/cli_baseline
+tests/performance/comparison_framework
+tests/performance/concurrency_test
+tests/performance/latency_benchmark
+tests/performance/memory_profiling
+tests/performance/stress_test
+tests/performance/throughput_test
+
+# Temporary test scripts
+estimate_performance.py
+quick_perf_test.py
+
+# Test results directory
+results/
