@@ -41,6 +41,15 @@
 // Export main client class
 export { GoxelDaemonClient } from './mcp-client/daemon_client';
 
+// Export JSON-RPC protocol handler
+export { JsonRpcProtocolHandler, jsonRpcProtocol } from './mcp-client/json_rpc';
+
+// Export connection pool for advanced usage
+export { ConnectionPool } from './mcp-client/connection_pool';
+
+// Export health monitor
+export { HealthMonitor } from './mcp-client/health_monitor';
+
 // Export all types and interfaces
 export * from './mcp-client/types';
 
@@ -66,4 +75,6 @@ export {
   ClientEvent,
   DaemonMethod,
   DEFAULT_CLIENT_CONFIG,
+  DEFAULT_POOL_CONFIG,
+  DEFAULT_POOLED_CLIENT_CONFIG,
 } from './mcp-client/types';
