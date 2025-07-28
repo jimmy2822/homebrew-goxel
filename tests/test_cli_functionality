@@ -1,9 +1,0 @@
-#!/bin/bash
-set -e
-echo 'Testing create command...'
-../goxel-cli create /tmp/test_create.gox || exit 1
-echo 'Testing help command...'
-../goxel-cli --help > /dev/null || exit 1
-echo 'Testing version command...'
-../goxel-cli --version > /dev/null || exit 1
-echo 'All CLI tests passed!'

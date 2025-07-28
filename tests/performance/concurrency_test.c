@@ -20,6 +20,45 @@
 #include <signal.h>
 #include <math.h>
 
+// macOS doesn't have pthread_barrier, so we implement a simple version
+#ifdef __APPLE__
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    int count;
+    int tripcount;
+} pthread_barrier_t;
+
+static int pthread_barrier_init(pthread_barrier_t *barrier, void *attr, unsigned int count) {
+    barrier->count = 0;
+    barrier->tripcount = count;
+    pthread_mutex_init(&barrier->mutex, NULL);
+    pthread_cond_init(&barrier->cond, NULL);
+    return 0;
+}
+
+static int pthread_barrier_wait(pthread_barrier_t *barrier) {
+    pthread_mutex_lock(&barrier->mutex);
+    barrier->count++;
+    if (barrier->count >= barrier->tripcount) {
+        barrier->count = 0;
+        pthread_cond_broadcast(&barrier->cond);
+        pthread_mutex_unlock(&barrier->mutex);
+        return 1;
+    } else {
+        pthread_cond_wait(&barrier->cond, &barrier->mutex);
+        pthread_mutex_unlock(&barrier->mutex);
+        return 0;
+    }
+}
+
+static int pthread_barrier_destroy(pthread_barrier_t *barrier) {
+    pthread_mutex_destroy(&barrier->mutex);
+    pthread_cond_destroy(&barrier->cond);
+    return 0;
+}
+#endif
+
 #ifndef CLOCK_MONOTONIC_RAW
 #define CLOCK_MONOTONIC_RAW CLOCK_MONOTONIC
 #endif

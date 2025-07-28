@@ -28,7 +28,6 @@ vars.AddVariables(
     BoolVariable('yocto', 'Enable yocto renderer', True),
     BoolVariable('headless', 'Build headless version (no GUI)', False),
     BoolVariable('gui', 'Build with GUI support', True),
-    BoolVariable('cli_tools', 'Build CLI tools', False),
     BoolVariable('c_api', 'Build C API shared library', False),
     BoolVariable('daemon', 'Build daemon server', False),
     PathVariable('config_file', 'Config file to use', 'src/config.h'),
@@ -94,8 +93,6 @@ if env['headless']:
     env.Append(CPPDEFINES=['GOXEL_HEADLESS=1'])
 if env['gui']:
     env.Append(CPPDEFINES=['GOXEL_GUI=1'])
-if env['cli_tools']:
-    env.Append(CPPDEFINES=['GOXEL_CLI_TOOLS=1'])
 if env['c_api']:
     env.Append(CPPDEFINES=['GOXEL_C_API=1'])
 if env['daemon']:
@@ -121,7 +118,7 @@ if not env['headless']:
 
 # Include headless sources if building headless
 headless_sources = []
-if env['headless'] or env['cli_tools'] or env['daemon']:
+if env['headless'] or env['daemon']:
     for root, dirnames, filenames in os.walk('src/headless'):
         for filename in filenames:
             if filename.endswith('.c') or filename.endswith('.cpp'):
@@ -170,7 +167,7 @@ gui_dependent_files = [
 # Directories with GUI dependencies for CLI builds
 gui_dependent_dirs = ['tools', 'filters']
 # For headless and CLI builds, exclude formats and utils (they use core/ versions)
-if env['headless'] or env['cli_tools'] or env['daemon']:
+if env['headless'] or env['daemon']:
     gui_dependent_dirs.extend(['formats', 'utils'])
 
 for root, dirnames, filenames in os.walk('src'):
@@ -181,7 +178,7 @@ for root, dirnames, filenames in os.walk('src'):
     for filename in filenames:
         if filename.endswith('.c') or filename.endswith('.cpp'):
             # For CLI/headless/daemon builds, exclude GUI-dependent files and directories
-            if env['headless'] or env['cli_tools'] or env['daemon']:
+            if env['headless'] or env['daemon']:
                 if filename in gui_dependent_files:
                     continue
                 # Check if file is in GUI-dependent directory
@@ -196,9 +193,9 @@ for root, dirnames, filenames in os.walk('src'):
 
 sources = core_sources + other_sources
 # Include GUI sources only if NOT building headless OR CLI tools OR daemon
-if not env['headless'] and not env['cli_tools'] and not env['daemon']:
+if not env['headless'] and not env['daemon']:
     sources += gui_sources
-if env['headless'] or env['cli_tools']:
+if env['headless']:
     sources += headless_sources
 if env['daemon']:
     sources += daemon_sources
@@ -208,13 +205,6 @@ if env['daemon']:
         if 'main_cli.c' not in source and source not in sources:
             sources.append(source)
 
-# Use CLI main for CLI tools build
-if env['cli_tools'] and not env['headless']:
-    # For CLI tools, use the CLI main entry point
-    cli_main = 'src/headless/main_cli.c'
-    if cli_main in sources:
-        sources.remove(cli_main)
-    sources.append(cli_main)
 
 # Use daemon main for daemon build
 if env['daemon']:
@@ -471,12 +461,10 @@ goxel_error_t goxel_get_memory_usage(goxel_context_t *ctx, size_t *bytes_used, s
     print("Note: This is a stub implementation for Phase 4 demonstration.")
 
 # Build executable targets
-if env['headless']:
-    target_name = 'goxel-headless'
-elif env['cli_tools']:
-    target_name = 'goxel-cli'
-elif env['daemon']:
+if env['daemon']:
     target_name = 'goxel-daemon'
+elif env['headless']:
+    target_name = 'goxel-headless'
 else:
     target_name = 'goxel'
 

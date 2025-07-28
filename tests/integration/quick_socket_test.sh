@@ -12,7 +12,7 @@ NC='\033[0m'
 
 SOCKET="/tmp/goxel_quick_test.sock"
 PID_FILE="/tmp/goxel_quick_test.pid"
-DAEMON="../../goxel-headless"
+DAEMON="../../goxel-daemon"
 
 echo -e "${YELLOW}Quick Socket Communication Test${NC}"
 echo "================================"

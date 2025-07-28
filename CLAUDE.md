@@ -1,15 +1,15 @@
-# CLAUDE.md - Goxel v13 Headless 3D Voxel Editor
+# CLAUDE.md - Goxel v14 Daemon Architecture 3D Voxel Editor
 
 ## Project Overview
 
-Goxel is a cross-platform 3D voxel editor written primarily in C99 with some C++ components. **Version 13.0.0 introduces headless operation capabilities**, enabling programmatic voxel editing without GUI dependencies for server deployments, automation, and application integration.
+Goxel is a cross-platform 3D voxel editor written primarily in C99 with some C++ components. **Version 14.0.0 introduces a high-performance daemon architecture**, enabling concurrent voxel editing operations through JSON-RPC protocol for enterprise deployments, automation, and application integration.
 
-**🎉 v13.1 Production Status: ZERO TECHNICAL DEBT - READY FOR DEPLOYMENT**
-- **v13.0 Complete**: All 6 development phases finished (January 2025)
-- **v13.1 Technical Debt Resolved**: 12/12 critical issues properly fixed with zero workarounds
-- **Streamlined Testing**: Essential test suite validates core functionality (all tests passing)
-- **Performance Exceeds Targets**: 7.95ms startup, 5.76MB binary, sub-13ms operations
-- **Production Validated**: Zero crashes, zero memory leaks, 100% functional
+**🎉 v14.0 Daemon Status: 87% COMPLETE - FUNCTIONAL BETA**
+- **Core Implementation**: All JSON-RPC methods implemented (January 2025)
+- **Socket Communication**: Fixed and working properly
+- **TypeScript Client**: Complete with connection pooling
+- **Performance Target**: 700%+ improvement over CLI (pending validation)
+- **Production Readiness**: 1-2 weeks after performance validation
 
 **Core Features:**
 - 24-bit RGB colors with alpha channel support
@@ -19,20 +19,20 @@ Goxel is a cross-platform 3D voxel editor written primarily in C99 with some C++
 - Ray tracing and advanced lighting
 - Multiple export formats (OBJ, PLY, PNG, Magica Voxel, Qubicle, STL, etc.)
 
-**🚀 v13.4 Headless Features (PRODUCTION-GRADE + OPTIMIZED):**
-- **Command-line Interface**: Full CLI tool (`goxel-headless`) with all operations working
-- **Persistent Mode**: Interactive shell and stdin processing for 5.2x performance boost
-- **Batch Operations**: Script file execution with single-process efficiency
-- **C API**: Production-grade library for application integration
+**🚀 v14.0 Daemon Features (ENTERPRISE-GRADE ARCHITECTURE):**
+- **JSON-RPC Server**: Unix socket-based server with full protocol compliance
+- **Concurrent Processing**: Worker pool architecture for parallel operations
+- **TypeScript Client**: Production-ready client library with connection pooling
+- **MCP Integration**: Seamless integration with Model Context Protocol tools
 - **Headless Rendering**: OSMesa-based image generation with software fallback
-- **Server Deployment**: No GUI dependencies, perfect for containers
+- **Enterprise Deployment**: systemd/launchd support for production environments
 - **Scripting Support**: JavaScript automation with QuickJS integration
 - **File Format Support**: Complete export/import system (OBJ, PLY, VOX, GLTF, etc.)
-- **Optimized Performance**: 9.88ms startup, 5.78MB binary, 80.8% faster batch operations
+- **Performance Target**: 700%+ improvement over sequential operations
 
 **Official Website:** https://goxel.xyz  
-**v13 Documentation:** See `docs/` directory for complete guides  
-**Platforms:** Linux, BSD, Windows, macOS, iOS, Android + **Headless Server Support**
+**v14 Documentation:** See `docs/v14/` directory for daemon architecture guides  
+**Platforms:** Linux, BSD, Windows, macOS + **Enterprise Server Support**
 
 ## Architecture Overview
 
@@ -91,8 +91,22 @@ Key external libraries in `ext_src/`:
 ```
 /
 ├── src/                    # Main source code
+│   ├── daemon/            # Daemon architecture components
+│   │   ├── daemon_main.c  # Daemon entry point
+│   │   ├── json_rpc.c/h   # JSON-RPC protocol implementation  
+│   │   ├── socket_server.c # Unix socket server
+│   │   └── worker_pool.c  # Concurrent worker threads
+│   ├── headless/          # Headless rendering and API
+│   │   ├── goxel_headless_api.c # Core API implementation
+│   │   └── render_headless.c    # Software rendering
+│   ├── core/              # Core voxel engine (shared)
+│   │   ├── goxel_core.c   # Core functionality
+│   │   ├── image.c        # Image/layer management
+│   │   └── formats/       # Import/export handlers
+│   ├── mcp-client/        # TypeScript client library
+│   │   ├── json_rpc.ts    # JSON-RPC client
+│   │   └── index.ts       # Client API
 │   ├── tools/             # Voxel editing tools (brush, select, etc.)
-│   ├── formats/           # Import/export format handlers
 │   ├── gui/               # GUI panels and components  
 │   ├── utils/             # Utility functions (math, file I/O, etc.)
 │   ├── assets/            # Embedded assets (generated)
@@ -177,23 +191,22 @@ if (condition) {
 
 ## Build System
 
-### v13 Headless Build Commands
+### v14 Daemon Build Commands
 ```bash
-# v13 Headless CLI (PRODUCTION READY)
-scons headless=1 cli_tools=1
+# v14 Daemon Server (FUNCTIONAL BETA)
+scons daemon=1
 
-# v13 C API Library
-scons headless=1 c_api=1
+# v14 Release Build (Optimized)
+scons mode=release daemon=1
 
-# v13 Release Build (Optimized)
-scons mode=release headless=1 cli_tools=1
+# v14 Debug Build
+scons mode=debug daemon=1
 
-# v13 Complete Build (CLI + API)
-scons headless=1 cli_tools=1 c_api=1
+# Start the daemon
+./goxel-daemon --foreground --socket /tmp/goxel.sock
 
-# Test the CLI
-./goxel-headless --help
-./goxel-headless create test.gox
+# Test with TypeScript client
+cd src/mcp-client && npm test
 ```
 
 ### Traditional GUI Build Commands
@@ -217,19 +230,19 @@ make clean
 ./goxel
 ```
 
-### v13.1 Testing Commands (STREAMLINED)
+### v14 Daemon Testing Commands
 ```bash
-# Run essential test suite (all tests passing)
-make -C tests run-all
+# Run integration tests
+make -C tests/integration
 
-# Run quick CLI functionality test
-make -C tests quick
+# Run performance benchmarks
+python3 scripts/run_benchmarks.py
 
-# Run performance benchmarks directly
-python3 tests/simple_perf_test.py
+# Test socket communication
+./tests/integration/quick_socket_test.sh
 
-# Use streamlined test runner
-./tests/run_all_tests.sh
+# Run TypeScript client tests
+cd src/mcp-client && npm test
 ```
 
 ### Platform-Specific Dependencies
@@ -250,43 +263,43 @@ pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-glfw mingw-w64-x86_64-libtre-git
 brew install scons glfw tre
 ```
 
-## Testing ✅ STREAMLINED PRODUCTION-GRADE TEST SUITE
+## Testing ✅ ENTERPRISE-GRADE DAEMON TEST SUITE
 
-### v13.1 Essential Testing Framework (ZERO TECHNICAL DEBT)
-- **Streamlined Approach**: Essential tests only, using actual CLI executable
-- **All Tests Passing**: CLI functionality and performance validation complete
-- **Performance Benchmarks**: All targets exceeded (7.95ms startup, 5.76MB binary)
-- **Zero Dependencies**: Uses existing build system, no complex test compilation
+### v14 Performance Testing Framework
+- **Integration Tests**: Socket communication, JSON-RPC protocol validation
+- **Performance Benchmarks**: 700%+ improvement target validation
+- **Concurrent Client Tests**: Worker pool stress testing
+- **TypeScript Client Tests**: Complete client library test coverage
 
-### v13.1 Test Files (STREAMLINED & COMPLETE)
-- **CLI Functionality**: `tests/test_cli_functionality` - Essential commands (create, help, version)
-- **Performance Tests**: `tests/simple_perf_test.py` - Comprehensive benchmarks
-- **Test Runner**: `tests/run_all_tests.sh` - Automated execution with colored output
-- **Build System**: `tests/Makefile` - Streamlined test generation
-- **Results**: `tests/simple_perf_results.json` - Automated performance tracking
+### v14 Test Components
+- **Socket Tests**: `tests/integration/quick_socket_test.sh` - Socket communication
+- **Performance Suite**: `tests/performance/` - Latency, throughput, memory tests
+- **Client Tests**: `src/mcp-client/tests/` - TypeScript client test suite
+- **Benchmark Runner**: `scripts/run_benchmarks.py` - Automated performance validation
+- **Comparison Framework**: `tests/performance/comparison_framework` - v13 vs v14 metrics
 
 ### Legacy Testing
 - **Original Tests**: `src/tests.c` - Legacy test framework
 - **Test Data**: Sample voxel files in `data/progs/`
 - **CI/CD**: GitHub Actions for automated builds
 
-## Key Files for v13 Development ✅ COMPLETE
+## Key Files for v14 Development 🚧 87% COMPLETE
 
-### v13 Headless Core Files
-- **Core API**: `src/core/goxel_core.h/.c` - Headless core implementation
-- **CLI Interface**: `src/headless/cli_interface.h/.c` - Command-line parser
-- **CLI Commands**: `src/headless/cli_commands.h/.c` - All CLI operations
-- **CLI Main**: `src/headless/main_cli.c` - CLI application entry point
-- **C API Bridge**: `src/headless/goxel_headless_api.h/.c` - Public C API
-- **Public Header**: `include/goxel_headless.h` - Complete API definition
+### v14 Daemon Core Files
+- **Daemon Main**: `src/daemon/daemon_main.c` - Server entry point
+- **JSON-RPC Handler**: `src/daemon/json_rpc.h/.c` - Protocol implementation
+- **Socket Server**: `src/daemon/socket_server.h/.c` - Unix socket communication
+- **Worker Pool**: `src/daemon/worker_pool.h/.c` - Concurrent processing
+- **TypeScript Client**: `src/mcp-client/index.ts` - Client library API
+- **Headless API**: `src/headless/goxel_headless_api.h/.c` - Core API
 - **Headless Rendering**: `src/headless/render_headless.c` - OSMesa integration
 
-### v13 Documentation Suite (COMPLETE)
-- **API Reference**: `docs/API_REFERENCE.md` - Complete C API documentation (400+ lines)
-- **User Guide**: `docs/USER_GUIDE.md` - Tutorials and examples (800+ lines)
-- **Developer Guide**: `docs/DEVELOPER_GUIDE.md` - Architecture guide (1000+ lines)
-- **Release Notes**: `RELEASE_NOTES_v13.md` - Complete v13 documentation
-- **Phase 6 Report**: `PHASE6_COMPLETION_REPORT.md` - Final status report
+### v14 Documentation Suite (IN PROGRESS)
+- **API Reference**: `docs/v14/daemon_api_reference.md` - JSON-RPC API docs
+- **Deployment Guide**: `docs/v14/deployment.md` - Production deployment
+- **Integration Guide**: `docs/v14/integration_guide.md` - Client integration
+- **Architecture Overview**: `docs/v14/ACTUAL_STATUS.md` - Current status
+- **Migration Guide**: `docs/v14/migration_from_v13.md` - v13 to v14 migration
 
 ### Build Configuration
 - **SCons Build**: `SConstruct` - Enhanced with headless/CLI options
@@ -299,19 +312,19 @@ brew install scons glfw tre
 - **Volume System**: `src/volume.h/.c` - Core voxel data structures
 - **Rendering**: `src/render.h/.c` - GUI rendering system
 
-## Development Workflow ✅ PRODUCTION READY
+## Development Workflow 🚧 FUNCTIONAL BETA
 
-### v13 Headless Development (CURRENT)
-1. **Setup**: Install platform-specific dependencies
-2. **Build**: `scons headless=1 cli_tools=1` for headless CLI
-3. **Test**: `./goxel-headless --help` and `make -C tests run-all`
+### v14 Daemon Development (CURRENT)
+1. **Setup**: Install platform-specific dependencies + Node.js
+2. **Build**: `scons daemon=1` for daemon server
+3. **Test**: `./goxel-daemon --help` and integration tests
 4. **Development**: 
-   - **Headless Core**: Modify `src/core/` for core functionality
-   - **CLI Interface**: Update `src/headless/cli_*` for CLI features
-   - **C API**: Enhance `src/headless/goxel_headless_api.c` for API
-   - **Documentation**: Update `docs/` for user/developer guides
-5. **Testing**: Run comprehensive test suite with `tests/run_all_tests.sh`
-6. **Release**: Use `tools/prepare_release.sh` for automated packaging
+   - **Daemon Core**: Modify `src/daemon/` for server functionality
+   - **JSON-RPC**: Update `src/daemon/json_rpc.c` for new methods
+   - **TypeScript Client**: Enhance `src/mcp-client/` for client features
+   - **Documentation**: Update `docs/v14/` for API and deployment guides
+5. **Testing**: Run performance benchmarks and integration tests
+6. **Release**: Pending final performance validation
 
 ### Legacy GUI Development (MAINTENANCE)
 1. **Setup**: Install GUI dependencies (GLFW, ImGui)
@@ -363,70 +376,6 @@ Goxel includes JavaScript scripting via QuickJS:
 - **Asset embedding**: Assets are compiled into binary for fast loading
 - **Mesh optimization**: Uses meshoptimizer library for efficient geometry
 
-### 🚀 Headless CLI 效能優化建議
-
-**問題**: 每次執行 CLI 命令都會重新啟動 Goxel context，造成資源浪費和啟動延遲。
-
-**解決方案**: 使用持續運行模式來優化資源使用：
-
-#### 推薦方案：Server-Client 架構 (Server-Client Architecture)
-```bash
-# 1. 啟動 headless server（背景持續運行）
-./goxel-headless-server --socket /tmp/goxel.sock &
-
-# 2. 使用輕量級 CLI client 發送命令
-./goxel-cli create test.gox
-./goxel-cli add-voxel 0 -16 0 255 0 0 255  
-./goxel-cli add-voxel 1 -16 0 0 255 0 255
-./goxel-cli export test.obj
-
-# 3. 停止 server
-./goxel-cli shutdown
-```
-
-#### 替代方案：互動式 Client
-```bash
-# 啟動互動式 client（server 在背景運行）
-./goxel-cli --interactive
-
-# 在互動式 shell 中執行命令
-goxel> create test.gox
-goxel> add-voxel 0 -16 0 255 0 0 255
-goxel> export test.obj
-goxel> exit
-```
-
-#### 進階方案：TCP Server（支持遠程控制）
-```bash
-# 啟動 TCP server（可遠程訪問）
-./goxel-headless-server --tcp --port 8080 --bind 0.0.0.0
-
-# 從遠程機器控制
-./goxel-cli --host remote-server.com --port 8080 create test.gox
-```
-
-**效能提升預估**:
-- **啟動時間**: 從 7.95ms × N 次命令 → 7.95ms × 1 次啟動
-- **記憶體使用**: 避免重複初始化 OSMesa 和 Goxel core
-- **檔案 I/O**: 減少重複載入資產和配置
-- **總體效能**: 批次操作可獲得 3-5x 效能提升
-
-**實現優先級**:
-1. **MCP Server 模式（已實現）** - 當前最佳方案，Node.js 持續運行調用 CLI
-2. **守護程序模式** - 適合純 CLI 場景
-3. **互動式模式** - 適合開發和測試
-
-**🎯 MCP Server 現狀分析**:
-- **✅ 已實現持續運行**: MCP Server 本身持續運行，避免 Node.js 重啟開銷
-- **✅ 橋接器優化**: `goxelHeadlessBridge` 一次初始化，重複使用
-- **⚠️ 仍有瓶頸**: 每次 CLI 命令仍會重啟整個 `goxel-headless` 程序
-
-**進一步優化建議**:
-- 讓 `goxel-headless` 支持 stdin/stdout 長期進程模式
-- 或實作真正的 headless daemon 服務
-- MCP Server 架構本身已經很高效，重點是底層 CLI 的優化
-
-這些優化特別適用於需要連續執行多個建模操作的場景，例如程序化生成、批次處理、或即時 3D 建模應用。現有的 MCP Server 架構已經是很好的起點。
 
 This codebase is well-structured with clear separation of concerns, comprehensive documentation, and a mature build system supporting multiple platforms.
 
@@ -474,107 +423,55 @@ All v13 development documentation is now complete and ready for production use:
   - ✅ All MCP tools working with headless API
   - ✅ Production-ready MCP server (13.0.0-phase5)
 
-### v13.1 Technical Debt Resolution (COMPLETE)
-- **✅ Technical Debt Checklist**: `/Users/jimmy/jimmy_side_projects/goxel/v13.1-technical-debt-checklist.md`
-  - ✅ All 12 critical issues properly fixed with zero workarounds
-  - ✅ Complete elimination of technical debt from v13.0
-  - ✅ Streamlined testing system implemented and validated
 
-### v13.2 Bug Fixes (January 2025)
-- **✅ GOX File Loading Fix**: Fixed critical bug in `src/core/gox_loader.c`
-  - Issue: Voxel data not persisting between CLI operations
-  - Root cause: Missing CRC reading causing file pointer misalignment
-  - Fix: Added proper 4-byte CRC reading after each chunk
-  - Fix: Added 4-byte rewind after dictionary terminator
-  - Result: GOX files now load correctly, voxels are preserved
-  - Fix Report: `/Users/jimmy/jimmy_side_projects/goxel-mcp/GOXEL_CLI_FIX_REPORT.md`
 
-### v13.3 Layer Management Improvements (January 2025)
-- **✅ Fixed Layer Duplication Issue**: Resolved critical layer management problems
-  - Issue: Each file load created duplicate layers, causing confusion
-  - Root cause: `image_new()` creating default layer + GOX loader adding file layers
-  - Solution: Created `image_new_empty()` for file loading without default layer
-  - Result: Only layers from file are loaded, no duplicates
-  
-- **✅ Enhanced Layer Safety**: Improved robustness of layer operations
-  - Added null pointer checks throughout layer operations
-  - Fixed `image_restore()` and `image_snapshot()` assertions
-  - All ACTION functions now check for active layer existence
-  - Result: No crashes when operating on empty projects
-  
-- **✅ Optimized CLI Workflow**: Streamlined CLI-specific operations
-  - All voxel operations now correctly use single layer
-  - File loading uses empty image to prevent layer duplication
-  - Improved layer ID preservation during save/load cycles
-  - Result: CLI operations are now consistent and predictable
-
-### v13.4 持續運行模式優化 (完成 - January 2025) ✅
-- **🎉 持續運行架構實現**: 成功解決 CLI 重複啟動效能問題
-  - 問題: 每次 CLI 命令重啟整個 goxel-headless 程序 (傳統模式平均 13.99ms 每次)
-  - 解決方案: Stdin/Stdout 長期進程模式 + 互動式 CLI shell
-  - **實際效能提升**: 批次操作效能提升 **520%** (5.2x 速度提升)
-  - **時間節省**: 每 5 個命令節省 56.50ms (80.8% 效能提升)
-  - 狀態: **完全實現並測試驗證**
-  
-- **📋 功能實現完成**: 
-  - **✅ 互動式模式**: `./goxel-headless --interactive` 支援持續運行 shell
-  - **✅ 管道輸入**: `echo "commands" | ./goxel-headless` 自動偵測並啟用持續模式
-  - **✅ 批次腳本**: `./goxel-headless batch script.txt` 單進程執行多個操作
-  - **✅ 內建命令**: help, version, exit 等命令正確註冊
-  - **✅ 錯誤處理**: 完整的命令解析和錯誤回報機制
-  - **✅ 記憶體管理**: 正確的 token 分配和清理
-
-### Project Status: PERFORMANCE OPTIMIZED - READY FOR ENTERPRISE DEPLOYMENT 🚀
-- **All Documentation Complete**: Ready for production deployment
-- **All Implementation Complete**: 6 phases + technical debt resolution + performance optimization finished
-- **All Testing Streamlined**: Essential test suite validates core functionality (all passing)
-- **Performance Excellence**: 9.88ms startup, 5.78MB binary, 520% batch operation speedup
-- **Optimization Features**: Interactive mode, batch processing, persistent execution
+### Project Status: v14.0 DAEMON ARCHITECTURE - 87% COMPLETE 🚧
+- **Core Implementation Complete**: All JSON-RPC methods and socket communication working
+- **TypeScript Client Ready**: Complete client library with connection pooling
+- **Performance Validation Pending**: 700%+ improvement target needs benchmarking
+- **Cross-Platform Testing Needed**: Only macOS tested, Linux/Windows pending
+- **Production Timeline**: 1-2 weeks after performance validation
 
 ---
 
-## 🎯 Goxel v13.4 Final Status Summary
+## 🎯 Goxel v14.0 Daemon Architecture Status
 
-**🚀 PERFORMANCE OPTIMIZED - ENTERPRISE DEPLOYMENT READY**
+**🚀 FUNCTIONAL BETA - ENTERPRISE ARCHITECTURE READY**
 
-### Major Achievement: Complete Technical Debt Elimination + Performance Optimization
-Goxel v13.4 eliminates ALL technical debt and adds groundbreaking performance optimizations:
-- **15/15 Critical Issues Resolved**: All workarounds replaced with proper implementations
-- **Layer Management Fixed**: No more duplicate layers, proper file loading/saving
-- **Zero Crashes**: Project loading, rendering, layer operations all working perfectly
-- **Complete Functionality**: Export/import, scripting, read-only mode, all CLI commands working
-- **Streamlined Testing**: Essential test suite validates core functionality (all tests passing)
-- **🚀 Performance Breakthrough**: 520% speedup with persistent execution modes
+### Major Achievement: Concurrent Processing Architecture
+Goxel v14.0 introduces groundbreaking daemon architecture for enterprise deployments:
+- **JSON-RPC Protocol**: Full protocol implementation with all core methods
+- **Worker Pool Architecture**: Concurrent request processing with thread pool
+- **TypeScript Client**: Production-ready client library with health monitoring
+- **Socket Communication**: Fixed and working Unix domain socket server
+- **MCP Integration**: Seamless integration with Model Context Protocol
+- **🚀 Performance Target**: 700%+ improvement over sequential operations
 
-### v13.4 Production Metrics (January 2025)
-- **Technical Debt Resolution**: 100% complete (15/15 issues properly fixed)
-- **Performance Excellence**: 9.88ms startup, 5.78MB binary, 80.8% faster operations
-- **Optimization Breakthrough**: 5.2x speedup for batch operations, 56.50ms saved per sequence
-- **Code Quality**: Zero memory leaks, zero crashes, zero workarounds
-- **Layer Management**: Fixed all duplication issues, single layer operations
-- **Test Coverage**: Streamlined essential test suite (all passing)
-- **Cross-platform**: Fully validated on macOS ARM64
-- **Enterprise Features**: Interactive mode, batch processing, persistent execution
+### v14.0 Current Metrics (January 2025)
+- **Implementation Progress**: 87% complete (13/15 critical tasks)
+- **Socket Communication**: Working properly after debugging
+- **JSON-RPC Methods**: All basic and core methods implemented
+- **TypeScript Client**: Complete with connection pooling
+- **Performance Benchmarks**: Framework ready, execution pending
+- **Cross-Platform**: macOS tested, Linux/Windows validation needed
+- **Enterprise Features**: systemd/launchd configs, deployment scripts
 
-### Technical Excellence Achieved
-- **Zero Technical Debt**: Complete elimination of all v13.0 workarounds and placeholders
-- **Production-Grade Stability**: All core operations work reliably without issues
-- **Performance Excellence**: Exceeds all targets by significant margins + 520% optimization boost
-- **Quality Assurance**: Comprehensive validation through streamlined testing
-- **Maintainability**: Clean, well-documented codebase with zero shortcuts
-- **Enterprise Optimization**: Interactive shell, batch processing, persistent execution modes
+### Remaining Work
+- **Performance Validation**: Execute benchmarks to verify 700% improvement
+- **Cross-Platform Testing**: Test on Linux and Windows platforms
+- **Production Deployment**: Validate in staging environment
+- **Documentation Updates**: Add actual performance metrics
 
-### Ready for Enterprise Deployment
-Goxel v13.4 represents the pinnacle of headless voxel editing technology - a robust, reliable, production-grade system suitable for:
-- **Enterprise Server Deployments** - Zero technical debt + 520% performance boost ensures reliability
-- **Mission-Critical Automation** - All operations work correctly with persistent execution modes
-- **Professional Integration** - Complete C API with proper error handling + batch processing
-- **Production Workflows** - Validated performance and stability with interactive shells
-- **CLI Automation** - Consistent layer management + optimized batch operations
-- **High-Performance Computing** - Interactive mode eliminates repeated startup overhead
-- **Container Deployments** - Persistent stdin/stdout processing for microservices
+### Ready for Beta Testing
+Goxel v14.0 daemon architecture provides enterprise-grade features:
+- **High-Performance Server** - Concurrent processing with worker threads
+- **Enterprise Integration** - JSON-RPC protocol for any language client
+- **Professional Deployment** - systemd/launchd support for production
+- **Scalable Architecture** - Connection pooling and health monitoring
+- **MCP Ecosystem** - Seamless integration with AI tools
+- **Container Ready** - Perfect for microservices architecture
 
-**🚀 Achievement: Complete technical debt elimination + revolutionary performance optimization!**
+**🚀 Status: Functional beta ready for performance validation and production deployment!**
 
 ---
 
