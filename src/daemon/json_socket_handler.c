@@ -57,12 +57,17 @@ void json_socket_set_handler(socket_message_handler_t handler, void *user_data)
 
 /**
  * Read raw JSON from socket.
- * JSON messages are delimited by newlines.
+ * Supports both newline-delimited and complete JSON object detection.
  */
 static int read_json_line(int fd, char *buffer, size_t max_size)
 {
     size_t pos = 0;
     char c;
+    int brace_count = 0;
+    int bracket_count = 0;
+    bool in_string = false;
+    bool escape_next = false;
+    bool found_start = false;
     
     while (pos < max_size - 1) {
         ssize_t n = recv(fd, &c, 1, 0);
@@ -71,7 +76,13 @@ static int read_json_line(int fd, char *buffer, size_t max_size)
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // No data available
                 if (pos == 0) return -1;
-                break;
+                // If we have a complete JSON object, return it
+                if (found_start && brace_count == 0 && bracket_count == 0) {
+                    break;
+                }
+                // Otherwise wait a bit for more data
+                usleep(1000); // 1ms
+                continue;
             }
             if (errno == EINTR) continue;
             return -2; // Error
@@ -82,16 +93,65 @@ static int read_json_line(int fd, char *buffer, size_t max_size)
             return -3;
         }
         
-        if (c == '\n') {
-            // End of line
-            break;
+        // Skip leading whitespace
+        if (!found_start && (c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
+            continue;
         }
         
         buffer[pos++] = c;
+        
+        // Track JSON structure
+        if (!in_string && !escape_next) {
+            if (c == '{') {
+                found_start = true;
+                brace_count++;
+            } else if (c == '}') {
+                brace_count--;
+                if (brace_count == 0 && bracket_count == 0 && found_start) {
+                    buffer[pos] = '\0';
+                    return (int)pos;
+                }
+            } else if (c == '[') {
+                found_start = true;
+                bracket_count++;
+            } else if (c == ']') {
+                bracket_count--;
+                if (brace_count == 0 && bracket_count == 0 && found_start) {
+                    buffer[pos] = '\0';
+                    return (int)pos;
+                }
+            } else if (c == '"') {
+                in_string = true;
+            } else if (c == '\n' && !found_start) {
+                // Empty line before JSON
+                pos = 0;
+                continue;
+            } else if (c == '\n' && found_start && brace_count == 0 && bracket_count == 0) {
+                // Newline after complete JSON
+                pos--; // Remove the newline
+                buffer[pos] = '\0';
+                return (int)pos;
+            }
+        } else if (in_string && !escape_next) {
+            if (c == '\\') {
+                escape_next = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+        } else {
+            escape_next = false;
+        }
     }
     
     buffer[pos] = '\0';
-    return (int)pos;
+    
+    // Check if we have a complete JSON object
+    if (found_start && brace_count == 0 && bracket_count == 0) {
+        return (int)pos;
+    }
+    
+    // Buffer full or incomplete JSON
+    return -4;
 }
 
 /**
@@ -135,6 +195,32 @@ static void *json_client_monitor_thread(void *arg)
             // Error
             LOG_E("Read error from client %u: %s", data->client->id, strerror(errno));
             break;
+        }
+        
+        if (len == -4) {
+            // Buffer full or incomplete JSON
+            LOG_E("JSON message from client %u too large or malformed (max: %zu bytes)", 
+                  data->client->id, sizeof(buffer));
+            
+            // Send error response
+            const char *error_response = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error: JSON message too large\"},\"id\":null}";
+            socket_message_t *error_msg = socket_message_create(
+                data->client->id,
+                0,
+                error_response,
+                (uint32_t)strlen(error_response)
+            );
+            if (error_msg) {
+                socket_server_send_message(data->server, data->client, error_msg);
+                socket_message_destroy(error_msg);
+            }
+            
+            // Clear the socket buffer to recover
+            char discard[1024];
+            while (recv(data->client->fd, discard, sizeof(discard), MSG_DONTWAIT) > 0) {
+                // Discard data
+            }
+            continue;
         }
         
         if (len <= 0) continue; // No data or would block

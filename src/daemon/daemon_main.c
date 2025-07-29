@@ -24,6 +24,7 @@
 #include "json_socket_handler.h"
 #include "mcp_handler.h"
 #include "../core/goxel_core.h"
+#include "../goxel.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,9 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+
+// Global goxel instance required by core functions
+goxel_t goxel;
 
 // Forward declarations
 static int64_t get_current_time_us(void);

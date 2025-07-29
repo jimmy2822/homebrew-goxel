@@ -123,10 +123,11 @@ json_rpc_response_t *handle_list_methods(const json_rpc_request_t *request)
     LOG_D("Handling list_methods");
     
     // Get method list from json_rpc module
-    char buffer[4096];
+    // Increased buffer size to handle more methods
+    char buffer[16384]; // 16KB should be plenty for method list
     if (json_rpc_list_methods(buffer, sizeof(buffer)) != 0) {
         return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
-                                             "Failed to list methods",
+                                             "Method list too large or internal error",
                                              NULL, &request->id);
     }
     
