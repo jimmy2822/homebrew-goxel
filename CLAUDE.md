@@ -188,6 +188,27 @@ if (condition) {
 
 ## Build System
 
+### Daemon Testing and Debugging
+
+When testing the daemon, use output redirection to avoid shell blocking:
+
+```bash
+# Start daemon with output redirected to file
+./goxel-daemon --foreground --socket /tmp/goxel.sock > daemon.log 2>&1 &
+DAEMON_PID=$!
+
+# Check if daemon is running
+ps aux | grep $DAEMON_PID | grep -v grep
+
+# View daemon logs
+tail -f daemon.log
+
+# Stop daemon
+kill $DAEMON_PID
+```
+
+Note: Using `--foreground` without redirection will cause the shell to wait for output, appearing to "hang". This is normal behavior, not a crash.
+
 ### v14 Daemon Build Commands
 ```bash
 # v14 Daemon Server (FUNCTIONAL BETA)
@@ -205,6 +226,51 @@ scons mode=debug daemon=1
 # Test with Python client example
 python3 examples/json_rpc_client.py
 ```
+
+### Homebrew Installation (macOS/Linux)
+
+#### Install from Local Development
+```bash
+# Create local tap
+cd /path/to/goxel
+mkdir -p homebrew-goxel/Formula
+
+# Create formula (see homebrew-goxel/Formula/goxel.rb)
+# Create tarball for formula
+tar -czf homebrew-goxel/goxel-14.0.0-dev.tar.gz \
+  --exclude='./homebrew-goxel' --exclude='./goxel' \
+  --exclude='./goxel-daemon' --exclude='.git' \
+  --exclude='*.o' --exclude='build' .
+
+# Calculate SHA256
+shasum -a 256 homebrew-goxel/goxel-14.0.0-dev.tar.gz
+
+# Tap local formula
+brew tap jimmy/goxel file:///path/to/goxel/homebrew-goxel
+
+# Install
+brew install jimmy/goxel/goxel
+
+# Start daemon service
+brew services start jimmy/goxel/goxel
+
+# Check service status
+brew services list | grep goxel
+
+# Test installation
+python3 /opt/homebrew/opt/goxel/share/goxel/examples/homebrew_test_client.py
+```
+
+#### Homebrew Formula Structure
+The formula installs:
+- `goxel-daemon` - The daemon server binary
+- Documentation in `/opt/homebrew/share/doc/goxel/`
+- Examples in `/opt/homebrew/share/goxel/examples/`
+- Service configuration for `brew services`
+- Socket at `/opt/homebrew/var/run/goxel/goxel.sock`
+- Logs at `/opt/homebrew/var/log/goxel/`
+
+Note: GUI version is not included in Homebrew package (daemon only).
 
 ### Traditional GUI Build Commands
 ```bash

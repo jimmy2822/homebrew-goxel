@@ -834,19 +834,25 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
     
     if (parse_result != JSON_RPC_SUCCESS || !rpc_request) {
         // Send error response for invalid requests
-        json_rpc_response_t error_response = {0};
-        json_rpc_create_id_null(&error_response.id);
-        error_response.result = NULL;
-        error_response.error.code = JSON_RPC_PARSE_ERROR;
-        error_response.error.message = "Invalid JSON-RPC request";
-        error_response.error.data = NULL;
+        json_rpc_response_t *error_response = json_rpc_create_response_error(
+            JSON_RPC_PARSE_ERROR,
+            "Invalid JSON-RPC request",
+            NULL,
+            NULL
+        );
+        
+        if (!error_response) {
+            return NULL;
+        }
         
         char *error_json = NULL;
-        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
+        if (json_rpc_serialize_response(error_response, &error_json) == JSON_RPC_SUCCESS) {
             socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
             free(error_json);
+            json_rpc_free_response(error_response);
             return error_msg;
         }
+        json_rpc_free_response(error_response);
         return NULL;
     }
     
@@ -871,21 +877,25 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
         cleanup_request_data(process_data);
         
         // Send error response for queue full
-        json_rpc_response_t error_response = {0};
-        json_rpc_clone_id(&rpc_request->id, &error_response.id);
-        error_response.result = NULL;
-        error_response.error.code = JSON_RPC_INTERNAL_ERROR;
-        error_response.error.message = "Server overloaded - request queue full";
-        error_response.error.data = NULL;
+        json_rpc_response_t *error_response = json_rpc_create_response_error(
+            JSON_RPC_INTERNAL_ERROR,
+            "Server overloaded - request queue full",
+            NULL,
+            &rpc_request->id
+        );
+        
+        if (!error_response) {
+            return NULL;
+        }
         
         char *error_json = NULL;
-        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
+        if (json_rpc_serialize_response(error_response, &error_json) == JSON_RPC_SUCCESS) {
             socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
             free(error_json);
-            json_rpc_free_id(&error_response.id);
+            json_rpc_free_response(error_response);
             return error_msg;
         }
-        json_rpc_free_id(&error_response.id);
+        json_rpc_free_response(error_response);
     }
     
     // Update statistics
