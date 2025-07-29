@@ -23,6 +23,7 @@
 #include "socket_server.h"
 #include "json_socket_handler.h"
 #include "mcp_handler.h"
+#include "test_methods.h"
 #include "../core/goxel_core.h"
 #include "../goxel.h"
 #include <stdio.h>
@@ -831,7 +832,7 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
         return NULL;
     }
     
-    // Single JSON-RPC request - use existing async processing
+    // Single JSON-RPC request - parse first to check if it's a test method
     json_rpc_request_t *rpc_request = NULL;
     json_rpc_result_t parse_result = json_rpc_parse_request(json_str, &rpc_request);
     free(json_str);
@@ -858,6 +859,30 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
         }
         json_rpc_free_response(error_response);
         return NULL;
+    }
+    
+    // Check if this is a test method that should be handled synchronously
+    if (rpc_request->method) {
+        json_rpc_response_t *test_response = handle_test_method(rpc_request->method, rpc_request);
+        if (test_response) {
+            // This is a test method - handle synchronously
+            char *response_json = NULL;
+            if (json_rpc_serialize_response(test_response, &response_json) == JSON_RPC_SUCCESS && response_json) {
+                socket_message_t *response_msg = socket_message_create_json(message->id, 0, response_json);
+                free(response_json);
+                json_rpc_free_response(test_response);
+                json_rpc_free_request(rpc_request);
+                
+                // Update statistics
+                pthread_mutex_lock(&daemon->state_mutex);
+                daemon->stats.protocol_stats.jsonrpc_requests++;
+                daemon->stats.requests_processed++;
+                pthread_mutex_unlock(&daemon->state_mutex);
+                
+                return response_msg;
+            }
+            json_rpc_free_response(test_response);
+        }
     }
     
     // Create request processing data for async handling
