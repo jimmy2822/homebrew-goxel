@@ -119,11 +119,11 @@ if not env['headless']:
 # Include headless sources if building headless
 headless_sources = []
 if env['headless'] or env['daemon']:
-    for root, dirnames, filenames in os.walk('src/headless'):
+    for root, dirnames, filenames in os.walk('src/daemon_render'):
         for filename in filenames:
             if filename.endswith('.c') or filename.endswith('.cpp'):
                 # Skip the stub files since we have the real implementation for headless/daemon
-                if filename not in ['goxel_headless_api_stub.c', 'headless_stubs.c']:
+                if filename not in ['goxel_daemon_api_stub.c', 'daemon_stubs.c']:
                     headless_sources.append(os.path.join(root, filename))
 
 # Include daemon sources if building daemon
@@ -191,7 +191,7 @@ if env['headless'] or env['daemon']:
 
 for root, dirnames, filenames in os.walk('src'):
     # Skip subdirectories we handle separately
-    if 'core' in root or 'gui' in root or 'headless' in root or 'daemon' in root:
+    if 'core' in root or 'gui' in root or 'daemon_render' in root or 'daemon' in root:
         continue
     
     for filename in filenames:
@@ -223,7 +223,7 @@ sources = core_sources + other_sources
 if not env['headless'] and not env['daemon']:
     sources += gui_sources
     # Add headless stubs for GUI builds only (not for daemon builds)
-    sources.append('src/headless/headless_stubs.c')
+    sources.append('src/daemon_render/daemon_stubs.c')
 if env['headless']:
     sources += headless_sources
 if env['daemon']:
@@ -412,7 +412,7 @@ if env['c_api']:
     # Create a minimal stub API implementation that compiles
     # This is a placeholder until full dependencies are resolved
     minimal_api_source = '''
-#include "../../include/goxel_headless.h"
+#include "../../include/goxel_daemon.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -486,7 +486,7 @@ goxel_error_t goxel_get_memory_usage(goxel_context_t *ctx, size_t *bytes_used, s
 '''
 
     # Write minimal stub to a temporary file
-    stub_file = 'src/headless/goxel_headless_api_stub.c'
+    stub_file = 'src/daemon_render/goxel_daemon_api_stub.c'
     with open(stub_file, 'w') as f:
         f.write(minimal_api_source)
     
@@ -496,11 +496,11 @@ goxel_error_t goxel_get_memory_usage(goxel_context_t *ctx, size_t *bytes_used, s
     api_env.Append(CPPDEFINES=['GOXEL_HEADLESS=1'])
     
     # Build the shared library with minimal stub
-    libgoxel = api_env.SharedLibrary(target='libgoxel-headless', source=[stub_file])
+    libgoxel = api_env.SharedLibrary(target='libgoxel-daemon', source=[stub_file])
     
     # Install headers and library
     api_env.Install('build/lib', libgoxel)
-    api_env.Install('build/include', 'include/goxel_headless.h')
+    api_env.Install('build/include', 'include/goxel_daemon.h')
     
     # Create alias for convenience
     api_env.Alias('c_api', ['build/lib', 'build/include'])

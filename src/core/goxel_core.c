@@ -18,7 +18,7 @@
 
 #include "goxel_core.h"
 #include "../goxel.h"  // For function prototypes and constants
-#include "../headless/render_headless.h"  // For headless rendering functions
+#include "../daemon_render/render_daemon.h"  // For daemon rendering functions
 #include "file_format.h"  // For file format handling
 #include "../script.h"  // For script execution functions
 #include <errno.h>
@@ -535,7 +535,7 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     LOG_I("Rendering scene to file: %s [%dx%d]", output_file, width, height);
     
     // Resize headless rendering buffer if needed
-    if (headless_render_resize(width, height) != 0) {
+    if (daemon_render_resize(width, height) != 0) {
         LOG_E("Failed to resize headless render buffer");
         return -1;
     }
@@ -558,9 +558,9 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     uint8_t background_color[4] = {240, 240, 240, 255};
     
     // Render the scene using headless rendering
-    LOG_I("About to call headless_render_scene_with_camera...");
-    int render_result = headless_render_scene_with_camera(ctx->image, camera, background_color);
-    LOG_I("headless_render_scene_with_camera returned: %d", render_result);
+    LOG_I("About to call daemon_render_scene_with_camera...");
+    int render_result = daemon_render_scene_with_camera(ctx->image, camera, background_color);
+    LOG_I("daemon_render_scene_with_camera returned: %d", render_result);
     
     // Clean up temporary camera if we created one
     if (camera != ctx->image->active_camera) {
@@ -573,12 +573,12 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     }
     
     // Save the rendered result to file
-    LOG_I("About to call headless_render_to_file...");
-    if (headless_render_to_file(output_file, format) != 0) {
+    LOG_I("About to call daemon_render_to_file...");
+    if (daemon_render_to_file(output_file, format) != 0) {
         LOG_E("Failed to save rendered image to file");
         return -1;
     }
-    LOG_I("headless_render_to_file completed successfully");
+    LOG_I("daemon_render_to_file completed successfully");
     
     LOG_I("Successfully rendered scene to %s", output_file);
     return 0;
@@ -591,7 +591,7 @@ int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height
     LOG_I("Rendering scene to buffer: %dx%d format=%s", width, height, format ? format : "png");
     
     // Resize headless rendering buffer if needed
-    if (headless_render_resize(width, height) != 0) {
+    if (daemon_render_resize(width, height) != 0) {
         LOG_E("Failed to resize headless render buffer");
         return -1;
     }
@@ -616,7 +616,7 @@ int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height
     uint8_t background_color[4] = {240, 240, 240, 255};
     
     // Render the scene using headless rendering
-    int render_result = headless_render_scene_with_camera(ctx->image, camera, background_color);
+    int render_result = daemon_render_scene_with_camera(ctx->image, camera, background_color);
     
     // Clean up temporary camera if we created one
     if (temp_camera) {
@@ -630,7 +630,7 @@ int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height
     
     // Get the rendered framebuffer data
     int fb_width, fb_height, bpp;
-    void *fb_buffer = headless_render_get_buffer(&fb_width, &fb_height, &bpp);
+    void *fb_buffer = daemon_render_get_buffer(&fb_width, &fb_height, &bpp);
     if (!fb_buffer) {
         LOG_E("Failed to get framebuffer data");
         return -1;
@@ -649,7 +649,7 @@ int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height
     close(fd);
     
     // Save framebuffer to temporary PNG file
-    if (headless_render_to_file(temp_path, format) != 0) {
+    if (daemon_render_to_file(temp_path, format) != 0) {
         LOG_E("Failed to encode framebuffer to format");
         unlink(temp_path);
         return -1;

@@ -1,8 +1,8 @@
-/* Goxel Headless API - Implementation
+/* Goxel Daemon API - Implementation
  *
  * Copyright (c) 2015-2022 Guillaume Chereau <guillaume@noctua-software.com>
  * 
- * This file implements the public C API for the Goxel Headless library.
+ * This file implements the public C API for the Goxel Daemon library.
  *
  * Goxel is free software: you can redistribute it and/or modify it under the
  * terms of the GNU General Public License as published by the Free Software
@@ -18,10 +18,10 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../../include/goxel_headless.h"
+#include "../../include/goxel_daemon.h"
 #include "../core/goxel_core.h"
 #include "../goxel.h"
-#include "render_headless.h"
+#include "render_daemon.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
@@ -723,9 +723,9 @@ goxel_error_t goxel_render_to_buffer(goxel_context_t *ctx, uint8_t **buffer,
     // Direct buffer rendering - no temp files needed
     pthread_mutex_lock(&ctx->mutex);
     
-    // Initialize headless rendering context for requested size
-    if (headless_render_init(options->width, options->height) != 0) {
-        set_last_error(ctx, "Failed to initialize headless rendering");
+    // Initialize daemon rendering context for requested size
+    if (daemon_render_init(options->width, options->height) != 0) {
+        set_last_error(ctx, "Failed to initialize daemon rendering");
         pthread_mutex_unlock(&ctx->mutex);
         return GOXEL_ERROR_RENDER_FAILED;
     }
@@ -812,7 +812,7 @@ bool goxel_has_feature(const char *feature)
     }
     
     if (strcmp(feature, "osmesa") == 0) {
-        return true;  // OSMesa is always supported in headless mode
+        return true;  // OSMesa is always supported in daemon mode
     } else if (strcmp(feature, "scripting") == 0) {
         return true;  // QuickJS scripting support
     } else if (strcmp(feature, "threading") == 0) {

@@ -16,8 +16,8 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RENDER_HEADLESS_H
-#define RENDER_HEADLESS_H
+#ifndef RENDER_DAEMON_H
+#define RENDER_DAEMON_H
 
 #include <stdbool.h>
 
@@ -30,20 +30,20 @@ typedef void* OSMesaContext;
 #endif
 #endif
 
-// EGL support for alternative headless rendering
+// EGL support for alternative daemon rendering
 #ifdef EGL_RENDERING
 #include <EGL/egl.h>
 #endif
 
 /*
- * Headless rendering system for Goxel using OSMesa.
+ * Daemon rendering system for Goxel using OSMesa.
  * Provides offscreen OpenGL rendering capabilities without requiring
  * a display system like X11 or Wayland.
  */
 
 /*
- * Function: headless_render_init
- * Initialize the headless rendering system.
+ * Function: daemon_render_init
+ * Initialize the daemon rendering system.
  *
  * Parameters:
  *   width  - Framebuffer width in pixels
@@ -52,17 +52,17 @@ typedef void* OSMesaContext;
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_init(int width, int height);
+int daemon_render_init(int width, int height);
 
 /*
- * Function: headless_render_shutdown
- * Cleanup headless rendering resources.
+ * Function: daemon_render_shutdown
+ * Cleanup daemon rendering resources.
  */
-void headless_render_shutdown(void);
+void daemon_render_shutdown(void);
 
 /*
- * Function: headless_render_resize
- * Resize the headless framebuffer.
+ * Function: daemon_render_resize
+ * Resize the daemon framebuffer.
  *
  * Parameters:
  *   width  - New framebuffer width in pixels
@@ -71,20 +71,20 @@ void headless_render_shutdown(void);
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_resize(int width, int height);
+int daemon_render_resize(int width, int height);
 
 /*
- * Function: headless_render_scene
+ * Function: daemon_render_scene
  * Set up OpenGL state for scene rendering.
  * This should be called before any render_xxx functions.
  *
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_scene(void);
+int daemon_render_scene(void);
 
 /*
- * Function: headless_render_to_file
+ * Function: daemon_render_to_file
  * Save the current framebuffer to a file.
  *
  * Parameters:
@@ -94,10 +94,10 @@ int headless_render_scene(void);
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_to_file(const char *filename, const char *format);
+int daemon_render_to_file(const char *filename, const char *format);
 
 /*
- * Function: headless_render_get_buffer
+ * Function: daemon_render_get_buffer
  * Get direct access to the framebuffer data.
  *
  * Parameters:
@@ -108,19 +108,19 @@ int headless_render_to_file(const char *filename, const char *format);
  * Returns:
  *   Pointer to RGBA framebuffer data, or NULL if not initialized
  */
-void *headless_render_get_buffer(int *width, int *height, int *bpp);
+void *daemon_render_get_buffer(int *width, int *height, int *bpp);
 
 /*
- * Function: headless_render_is_initialized
- * Check if headless rendering is initialized.
+ * Function: daemon_render_is_initialized
+ * Check if daemon rendering is initialized.
  *
  * Returns:
  *   true if initialized, false otherwise
  */
-bool headless_render_is_initialized(void);
+bool daemon_render_is_initialized(void);
 
 /*
- * Function: headless_render_create_context
+ * Function: daemon_render_create_context
  * Create a new OSMesa context (for advanced usage).
  * Only available when compiled with OSMESA_RENDERING.
  *
@@ -128,7 +128,7 @@ bool headless_render_is_initialized(void);
  *   OSMesa context handle, or NULL on error
  */
 #ifdef OSMESA_RENDERING
-OSMesaContext headless_render_create_context(void);
+OSMesaContext daemon_render_create_context(void);
 #endif
 
 /*
@@ -143,7 +143,7 @@ OSMesaContext headless_render_create_context(void);
 #include "../core/material.h"
 
 /*
- * Function: headless_render_scene_with_camera
+ * Function: daemon_render_scene_with_camera
  * Render a complete Goxel scene with camera setup.
  *
  * Parameters:
@@ -154,11 +154,11 @@ OSMesaContext headless_render_create_context(void);
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_scene_with_camera(const image_t *image, const camera_t *camera,
+int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera,
                                     const uint8_t background_color[4]);
 
 /*
- * Function: headless_render_layers
+ * Function: daemon_render_layers
  * Render a specific set of layers.
  *
  * Parameters:
@@ -169,11 +169,11 @@ int headless_render_scene_with_camera(const image_t *image, const camera_t *came
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_layers(const layer_t *layers, const camera_t *camera,
+int daemon_render_layers(const layer_t *layers, const camera_t *camera,
                           const uint8_t background_color[4]);
 
 /*
- * Function: headless_render_volume_direct
+ * Function: daemon_render_volume_direct
  * Render a single volume directly.
  *
  * Parameters:
@@ -185,7 +185,7 @@ int headless_render_layers(const layer_t *layers, const camera_t *camera,
  * Returns:
  *   0 on success, -1 on error
  */
-int headless_render_volume_direct(const volume_t *volume, const camera_t *camera,
+int daemon_render_volume_direct(const volume_t *volume, const camera_t *camera,
                                  const material_t *material, const uint8_t background_color[4]);
 
-#endif // RENDER_HEADLESS_H
+#endif // RENDER_DAEMON_H

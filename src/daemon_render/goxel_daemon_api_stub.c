@@ -1,5 +1,5 @@
 
-#include "../../include/goxel_headless.h"
+#include "../../include/goxel_daemon.h"
 #include <stdlib.h>
 #include <string.h>
 

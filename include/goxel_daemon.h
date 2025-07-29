@@ -1,8 +1,8 @@
-/* Goxel Headless API - Public Interface
+/* Goxel Daemon API - Public Interface
  *
  * Copyright (c) 2015-2022 Guillaume Chereau <guillaume@noctua-software.com>
  * 
- * This file provides the public C API for the Goxel Headless library,
+ * This file provides the public C API for the Goxel Daemon library,
  * enabling programmatic access to voxel editing operations without GUI dependencies.
  *
  * Goxel is free software: you can redistribute it and/or modify it under the
@@ -19,8 +19,8 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef GOXEL_HEADLESS_H
-#define GOXEL_HEADLESS_H
+#ifndef GOXEL_DAEMON_H
+#define GOXEL_DAEMON_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,7 +45,7 @@ extern "C" {
 // ============================================================================
 
 /**
- * Error codes returned by Goxel Headless API functions.
+ * Error codes returned by Goxel Daemon API functions.
  * Success is indicated by GOXEL_SUCCESS (0), all other values indicate errors.
  */
 typedef enum {
@@ -75,7 +75,7 @@ typedef enum {
 typedef struct goxel_context goxel_context_t;
 
 /**
- * Creates a new Goxel context for headless operations.
+ * Creates a new Goxel context for daemon operations.
  * 
  * @return Pointer to new context, or NULL if creation failed
  * @note Caller is responsible for destroying the context with goxel_destroy_context()
@@ -461,4 +461,4 @@ bool goxel_has_feature(const char *feature);
 }
 #endif
 
-#endif // GOXEL_HEADLESS_H
+#endif // GOXEL_DAEMON_H
