@@ -122,8 +122,8 @@ if env['headless'] or env['daemon']:
     for root, dirnames, filenames in os.walk('src/headless'):
         for filename in filenames:
             if filename.endswith('.c') or filename.endswith('.cpp'):
-                # Skip the stub file since we have the real implementation
-                if filename != 'goxel_headless_api_stub.c':
+                # Skip the stub files since we have the real implementation for headless/daemon
+                if filename not in ['goxel_headless_api_stub.c', 'headless_stubs.c']:
                     headless_sources.append(os.path.join(root, filename))
 
 # Include daemon sources if building daemon
@@ -139,7 +139,7 @@ other_sources = []
 
 # Files with GUI dependencies that should be excluded for CLI builds
 gui_dependent_files = [
-    'gui.cpp', 'imgui.cpp', 'main.c',  # Original exclusions
+    'gui.cpp', 'imgui.cpp',  # GUI-specific files
     'goxel.c',  # Contains GUI-specific code
     'tools.c',  # Contains GUI tool interfaces
     'filters.c',  # Contains GUI filter interfaces
@@ -157,11 +157,30 @@ gui_dependent_files = [
     'utils/geometry.c', 'utils/gl.c', 'utils/img.c', 'utils/ini.c',
     'utils/json.c', 'utils/mo_reader.c', 'utils/mustache.c', 'utils/path.c',
     'utils/sound.c', 'utils/texture.c', 'utils/vec.c',
-    # Additional GUI-dependent files for daemon build
-    'main_gui.c', 'main_headless.c', 'main_unified.c',  # All main entry points
+    # Main entry points - exclude based on build mode
+    'main_gui.c', 'main_headless.c', 'main_unified.c',
     'theme.c', 'render.c', 'gizmos.c', 'gesture.c', 'gesture3d.c',
     'model3d.c', 'action.c', 'tests.c', 'system.c', 'shader_cache.c',
     'i18n.c',
+]
+
+# Files to exclude in GUI mode (use main.c instead of main_unified.c)
+# Also exclude duplicate files that exist in core/
+gui_exclude_files = [
+    'main_unified.c', 'main_gui.c', 'main_headless.c',
+    # Exclude duplicates that exist in core/ for ALL builds
+    'image.c', 'layer.c', 'material.c', 'palette.c', 'shape.c', 'file_format.c',
+    'volume.c', 'volume_utils.c',
+    # Exclude utils duplicates for ALL builds
+    'utils/b64.c', 'utils/box.c', 'utils/cache.c', 'utils/color.c',
+    'utils/geometry.c', 'utils/gl.c', 'utils/img.c', 'utils/ini.c',
+    'utils/json.c', 'utils/mo_reader.c', 'utils/mustache.c', 'utils/path.c',
+    'utils/sound.c', 'utils/texture.c', 'utils/vec.c',
+    # Exclude formats duplicates for ALL builds  
+    'formats/gltf.c', 'formats/gox.c', 'formats/luanti.c', 'formats/png.c',
+    'formats/png_slices.c', 'formats/povray.c', 'formats/qubicle.c',
+    'formats/qubicle2.c', 'formats/txt.c', 'formats/vox.c', 'formats/voxlap.c',
+    'formats/vxl.c', 'formats/wavefront.c'
 ]
 
 # Directories with GUI dependencies for CLI builds
@@ -177,9 +196,13 @@ for root, dirnames, filenames in os.walk('src'):
     
     for filename in filenames:
         if filename.endswith('.c') or filename.endswith('.cpp'):
+            full_path = os.path.join(root, filename)
+            # Get relative path from src/
+            rel_path = os.path.relpath(full_path, 'src')
+            
             # For CLI/headless/daemon builds, exclude GUI-dependent files and directories
             if env['headless'] or env['daemon']:
-                if filename in gui_dependent_files:
+                if filename in gui_dependent_files or rel_path in gui_dependent_files:
                     continue
                 # Check if file is in GUI-dependent directory
                 skip_file = False
@@ -189,12 +212,18 @@ for root, dirnames, filenames in os.walk('src'):
                         break
                 if skip_file:
                     continue
-            other_sources.append(os.path.join(root, filename))
+            
+            # For ALL builds, exclude duplicate files that exist in core/
+            if filename in gui_exclude_files or rel_path in gui_exclude_files:
+                continue
+            other_sources.append(full_path)
 
 sources = core_sources + other_sources
 # Include GUI sources only if NOT building headless OR CLI tools OR daemon
 if not env['headless'] and not env['daemon']:
     sources += gui_sources
+    # Add headless stubs for GUI builds only (not for daemon builds)
+    sources.append('src/headless/headless_stubs.c')
 if env['headless']:
     sources += headless_sources
 if env['daemon']:
@@ -208,15 +237,33 @@ if env['daemon']:
 
 # Use daemon main for daemon build
 if env['daemon']:
-    # For daemon, use the daemon main entry point
+    # For daemon, use the daemon main entry point and remove the GUI main
     daemon_main = 'src/daemon/daemon_main.c'
-    if daemon_main in sources:
-        sources.remove(daemon_main)
-    sources.append(daemon_main)
+    gui_main = 'src/main.c'
+    
+    # Remove GUI main if it exists in sources
+    if gui_main in sources:
+        sources.remove(gui_main)
+    
+    # Add daemon main if not already there
+    if daemon_main not in sources:
+        sources.append(daemon_main)
 
 # Check for libpng (but skip for headless mode to use STB instead).
-if not env['headless'] and conf.CheckLibWithHeader('libpng', 'png.h', 'c'):
-    env.Append(CPPDEFINES='HAVE_LIBPNG=1')
+if not env['headless'] and not env['daemon']:
+    # For GUI builds on macOS, use Homebrew's ARM64 libpng
+    if target_os == 'darwin':
+        # Use pkg-config to get proper libpng settings for correct architecture
+        try:
+            env.ParseConfig('pkg-config --cflags --libs libpng')
+            env.Append(CPPDEFINES='HAVE_LIBPNG=1')
+            print("Using pkg-config libpng for GUI build")
+        except:
+            print("pkg-config libpng not found, using STB for image I/O")
+    else:
+        # Non-macOS systems
+        if conf.CheckLibWithHeader('libpng', 'png.h', 'c'):
+            env.Append(CPPDEFINES='HAVE_LIBPNG=1')
     
 # Daemon mode needs libpng on macOS for texture loading
 if env['daemon'] and target_os == 'darwin':
