@@ -2,7 +2,15 @@
 Goxel
 =====
 
-Version 0.15.1
+> **📚 Documentation has been reorganized!**  
+> Please see our new structured documentation:
+> - [Architecture Overview](01_ARCHITECTURE.md)
+> - [Project Overview](02_README.md)
+> - [Build Instructions](03_BUILD.md)
+> - [API Reference](04_API.md)
+> - [Quick Start Guide](05_QUICKSTART.md)
+
+Version 14.0.0 (Daemon Architecture)
 
 By Guillaume Chereau <guillaume@noctua-software.com>
 
