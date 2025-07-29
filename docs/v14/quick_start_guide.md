@@ -71,9 +71,9 @@ echo '{"jsonrpc":"2.0","method":"echo","params":{"message":"Hello Goxel!"},"id":
 ```bash
 # Create a project and add a red voxel
 cat << EOF | nc -U /tmp/goxel.sock
-{"jsonrpc":"2.0","method":"create_project","params":{"name":"quickstart"},"id":1}
-{"jsonrpc":"2.0","method":"add_voxel","params":{"x":0,"y":0,"z":0,"color":[255,0,0,255]},"id":2}
-{"jsonrpc":"2.0","method":"save_file","params":{"path":"quickstart.gox"},"id":3}
+{"jsonrpc":"2.0","method":"goxel.create_project","params":{"name":"quickstart"},"id":1}
+{"jsonrpc":"2.0","method":"goxel.add_voxel","params":{"x":0,"y":0,"z":0,"color":[255,0,0,255]},"id":2}
+{"jsonrpc":"2.0","method":"goxel.save_project","params":{"path":"quickstart.gox"},"id":3}
 EOF
 ```
 
@@ -221,9 +221,9 @@ pm2 start goxel-daemon -- --socket /tmp/goxel.sock
 
 | CLI Command | Daemon Method | Example |
 |-------------|---------------|---------|
-| `goxel-headless create file.gox` | `create_project` | `{"method":"create_project","params":{"name":"file"}}` |
-| `goxel-headless add-voxel x y z r g b a` | `add_voxel` | `{"method":"add_voxel","params":{"x":0,"y":0,"z":0,"color":[255,0,0,255]}}` |
-| `goxel-headless export file.obj` | `export_model` | `{"method":"export_model","params":{"path":"file.obj","format":"obj"}}` |
+| `goxel-headless create file.gox` | `goxel.create_project` | `{"method":"goxel.create_project","params":{"name":"file"}}` |
+| `goxel-headless add-voxel x y z r g b a` | `goxel.add_voxel` | `{"method":"goxel.add_voxel","params":{"x":0,"y":0,"z":0,"color":[255,0,0,255]}}` |
+| `goxel-headless export file.obj` | `goxel.export_model` | `{"method":"goxel.export_model","params":{"path":"file.obj","format":"obj"}}` |
 
 ### Using the Compatibility Script
 

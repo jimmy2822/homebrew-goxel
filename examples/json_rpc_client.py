@@ -65,12 +65,12 @@ def main():
     
     try:
         # Get daemon version
-        version = client.call('get_version')
+        version = client.call('goxel.get_version')
         print(f"Goxel daemon version: {version}")
         
         # Create a new project
         print("\nCreating new project...")
-        client.call('create_project', {'name': 'python_demo'})
+        client.call('goxel.create_project', {'name': 'python_demo'})
         
         # Add some voxels to create a small pyramid
         print("Adding voxels...")
@@ -84,7 +84,7 @@ def main():
         # Base layer (3x3)
         for x in range(-1, 2):
             for z in range(-1, 2):
-                client.call('add_voxel', {
+                client.call('goxel.add_voxel', {
                     'x': x, 'y': 0, 'z': z,
                     'r': colors[0][0], 'g': colors[0][1], 
                     'b': colors[0][2], 'a': colors[0][3]
@@ -93,14 +93,14 @@ def main():
         # Middle layer (2x2)
         for x in range(0, 2):
             for z in range(0, 2):
-                client.call('add_voxel', {
+                client.call('goxel.add_voxel', {
                     'x': x - 0.5, 'y': 1, 'z': z - 0.5,
                     'r': colors[1][0], 'g': colors[1][1],
                     'b': colors[1][2], 'a': colors[1][3]
                 })
         
         # Top layer (1x1)
-        client.call('add_voxel', {
+        client.call('goxel.add_voxel', {
             'x': 0, 'y': 2, 'z': 0,
             'r': colors[2][0], 'g': colors[2][1],
             'b': colors[2][2], 'a': colors[2][3]
@@ -108,18 +108,18 @@ def main():
         
         # Save the project
         print("Saving project...")
-        client.call('save_project', {'path': 'pyramid.gox'})
+        client.call('goxel.save_project', {'path': 'pyramid.gox'})
         
         # Export as OBJ
         print("Exporting as OBJ...")
-        client.call('export_project', {
+        client.call('goxel.export_model', {
             'format': 'obj',
             'path': 'pyramid.obj'
         })
         
         # Render an image
         print("Rendering preview...")
-        result = client.call('render_image', {
+        result = client.call('goxel.render_scene', {
             'width': 512,
             'height': 512,
             'camera_position': [5, 5, 5],

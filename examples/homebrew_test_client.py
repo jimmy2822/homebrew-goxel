@@ -65,19 +65,19 @@ def main():
     print(f"Testing Goxel daemon at {socket_path}...")
     
     # Test version
-    result = send_json_rpc(socket_path, "get_version")
+    result = send_json_rpc(socket_path, "goxel.get_version")
     if result:
         print(f"✓ Version: {result.get('result', {}).get('version', 'Unknown')}")
     else:
         sys.exit(1)
     
     # Test create project
-    result = send_json_rpc(socket_path, "create_project", {"name": "homebrew_test"})
+    result = send_json_rpc(socket_path, "goxel.create_project", {"name": "homebrew_test"})
     if result and not result.get('error'):
         print("✓ Created project: homebrew_test")
     
     # Test add voxel
-    result = send_json_rpc(socket_path, "add_voxel", {
+    result = send_json_rpc(socket_path, "goxel.add_voxel", {
         "position": {"x": 0, "y": 0, "z": 0},
         "color": {"r": 255, "g": 0, "b": 0, "a": 255}
     })
@@ -85,7 +85,7 @@ def main():
         print("✓ Added red voxel at origin")
     
     # Test export
-    result = send_json_rpc(socket_path, "export_model", {
+    result = send_json_rpc(socket_path, "goxel.export_model", {
         "path": "/tmp/homebrew_test.obj",
         "format": "obj"
     })

@@ -434,7 +434,7 @@ echo '{"jsonrpc":"2.0","method":"ping","id":1}' | nc -U /tmp/goxel-daemon.sock
 
 # Problem: Invalid params
 # Debug with verbose response
-echo '{"jsonrpc":"2.0","method":"add_voxel","params":{"wrong":"params"},"id":1}' | nc -U /tmp/goxel-daemon.sock
+echo '{"jsonrpc":"2.0","method":"goxel.add_voxel","params":{"wrong":"params"},"id":1}' | nc -U /tmp/goxel-daemon.sock
 # Returns detailed error message
 ```
 
@@ -500,9 +500,9 @@ done
 
 # Test voxel operation
 cat << EOF | nc -U /tmp/goxel-daemon.sock
-{"jsonrpc":"2.0","method":"create_project","params":{"name":"debug"},"id":1}
-{"jsonrpc":"2.0","method":"add_voxel","params":{"x":0,"y":0,"z":0,"color":[255,0,0,255]},"id":2}
-{"jsonrpc":"2.0","method":"save_file","params":{"path":"debug.gox"},"id":3}
+{"jsonrpc":"2.0","method":"goxel.create_project","params":{"name":"debug"},"id":1}
+{"jsonrpc":"2.0","method":"goxel.add_voxel","params":{"x":0,"y":0,"z":0,"color":[255,0,0,255]},"id":2}
+{"jsonrpc":"2.0","method":"goxel.save_project","params":{"path":"debug.gox"},"id":3}
 EOF
 
 # Monitor daemon internals (if debug build)
