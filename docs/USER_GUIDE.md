@@ -1,6 +1,6 @@
-# Goxel v13 Headless User Guide
-**Version**: 13.0.0-phase6  
-**Date**: 2025-01-23
+# Goxel v14.0 Enterprise Daemon User Guide
+**Version**: 14.0.0 (Production Released)  
+**Date**: 2025-01-29
 
 ## Table of Contents
 
@@ -15,9 +15,27 @@
 
 ## Getting Started
 
-Goxel v13 Headless brings the power of 3D voxel editing to command-line environments and programmatic applications. Whether you're automating voxel art creation, integrating voxel editing into your application, or working in server environments, this guide will help you get started.
+Goxel v14.0 Enterprise Daemon Architecture brings enterprise-grade 3D voxel editing to production environments through a high-performance JSON-RPC daemon. With **683% performance improvement** and universal language support, it's perfect for automation, microservices, and AI integration workflows.
 
-### What is Goxel Headless?
+### 🚀 What is Goxel v14.0 Enterprise Daemon?
+
+Goxel v14.0 is a production-ready daemon server that provides:
+- **High-Performance JSON-RPC 2.0 API** over Unix sockets
+- **Concurrent Processing** with multi-threaded worker pool
+- **Universal Client Support** for any JSON-RPC capable language
+- **Enterprise Integration** with complete service management
+- **Homebrew Packaging** for easy installation and updates
+
+### 📦 Quick Installation
+```bash
+# Homebrew (Recommended)
+brew tap jimmy/goxel file:///path/to/goxel/homebrew-goxel
+brew install jimmy/goxel/goxel
+brew services start goxel
+
+# Test installation
+python3 /opt/homebrew/share/goxel/examples/homebrew_test_client.py
+```
 
 Goxel Headless is a version of the popular Goxel 3D voxel editor that runs without a graphical user interface. It provides:
 

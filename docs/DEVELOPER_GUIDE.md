@@ -1,7 +1,7 @@
-# Goxel v13 Headless Developer Guide
-**Version**: 13.0.0-phase6  
-**Date**: 2025-01-23  
-**Audience**: Developers, Contributors, System Integrators
+# Goxel v14.0 Enterprise Daemon Developer Guide
+**Version**: 14.0.0 (Production Released)  
+**Date**: 2025-01-29  
+**Audience**: Enterprise Developers, Contributors, System Integrators
 
 ## Table of Contents
 

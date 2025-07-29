@@ -17,7 +17,7 @@
  */
 
 #include "goxel.h"
-#include "camera_headless.h"
+#include "camera_daemon.h"
 
 typedef enum {
     CAMERA_PRESET_FRONT,
