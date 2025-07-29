@@ -838,6 +838,15 @@ daemon_error_t daemon_run(daemon_context_t *ctx)
     
     // Main daemon loop
     while (!daemon_shutdown_requested(ctx)) {
+        // Process any pending signals first
+        daemon_error_t signal_result = daemon_process_signals(ctx);
+        if (signal_result != DAEMON_SUCCESS) {
+            // Log error but continue running unless it's a shutdown
+            if (daemon_shutdown_requested(ctx)) {
+                break;
+            }
+        }
+        
         // Update activity timestamp
         daemon_update_activity(ctx);
         

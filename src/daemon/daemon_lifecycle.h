@@ -538,6 +538,27 @@ daemon_error_t daemon_setup_signals(daemon_context_t *ctx);
  */
 daemon_error_t daemon_cleanup_signals(void);
 
+/**
+ * Processes any pending signals in the main thread.
+ * This should be called periodically by the daemon main loop.
+ * 
+ * @param ctx Daemon context
+ * @return DAEMON_SUCCESS on success, error code on failure
+ */
+daemon_error_t daemon_process_signals(daemon_context_t *ctx);
+
+/**
+ * Checks if any signals are pending without processing them.
+ * 
+ * @return true if signals are pending, false otherwise
+ */
+bool daemon_has_pending_signals(void);
+
+/**
+ * Resets all signal flags (mainly for testing).
+ */
+void daemon_reset_signal_flags(void);
+
 // ============================================================================
 // SIGNAL UTILITIES
 // ============================================================================

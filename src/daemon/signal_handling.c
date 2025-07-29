@@ -42,6 +42,11 @@ static struct sigaction old_sigchld_action;
 static struct sigaction old_sigpipe_action;
 static bool signals_installed = false;
 
+// Signal-safe flags for communication between signal handlers and main thread
+static volatile sig_atomic_t shutdown_signal_received = 0;
+static volatile sig_atomic_t reload_signal_received = 0;
+static volatile sig_atomic_t pipe_errors_count = 0;
+
 // ============================================================================
 // SIGNAL HANDLER IMPLEMENTATIONS
 // ============================================================================
@@ -51,18 +56,14 @@ static bool signals_installed = false;
  */
 static void daemon_signal_shutdown(int signal)
 {
-    if (g_daemon_context) {
-        // Request graceful shutdown
-        daemon_request_shutdown(g_daemon_context);
-        
-        // Log the signal (if logging were implemented)
-        // For now, we'll just update the error state
-        if (signal == SIGTERM) {
-            daemon_set_error(g_daemon_context, DAEMON_SUCCESS, "Received SIGTERM, shutting down gracefully");
-        } else if (signal == SIGINT) {
-            daemon_set_error(g_daemon_context, DAEMON_SUCCESS, "Received SIGINT, shutting down gracefully");
-        }
-    }
+    (void)signal; // Unused parameter
+    
+    // Only use async-signal-safe operations
+    // Set signal-safe flag that main thread will check
+    shutdown_signal_received = 1;
+    
+    // Write to a pipe could be used here for immediate notification
+    // but for simplicity, we'll rely on main thread polling
 }
 
 /**
@@ -72,14 +73,9 @@ static void daemon_signal_reload(int signal)
 {
     (void)signal; // Unused parameter
     
-    if (g_daemon_context) {
-        // In a full implementation, this would reload configuration
-        // For now, just log that we received the signal
-        daemon_set_error(g_daemon_context, DAEMON_SUCCESS, "Received SIGHUP, configuration reload requested");
-        
-        // Update activity timestamp to show daemon is responsive
-        daemon_update_activity(g_daemon_context);
-    }
+    // Only use async-signal-safe operations
+    // Set signal-safe flag for main thread to handle config reload
+    reload_signal_received = 1;
 }
 
 /**
@@ -90,16 +86,13 @@ static void daemon_signal_child(int signal)
     (void)signal; // Unused parameter
     
     // Reap any child processes to prevent zombies
+    // waitpid is async-signal-safe according to POSIX
     pid_t pid;
     int status;
     
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        // Child process reaped
-        if (g_daemon_context) {
-            // In a full implementation, we might track child processes
-            // For now, just update activity
-            daemon_update_activity(g_daemon_context);
-        }
+        // Child process reaped - this is the main purpose of SIGCHLD handler
+        // Only use async-signal-safe operations here
     }
 }
 
@@ -110,10 +103,9 @@ static void daemon_signal_pipe(int signal)
 {
     (void)signal; // Unused parameter
     
-    if (g_daemon_context) {
-        // Ignore SIGPIPE - we'll handle broken connections in the application
-        daemon_increment_errors(g_daemon_context);
-    }
+    // SIGPIPE should generally be ignored - we handle broken pipes in application code
+    // Only use async-signal-safe operations - increment atomic counter
+    pipe_errors_count++;
 }
 
 // ============================================================================
@@ -173,6 +165,9 @@ daemon_error_t daemon_setup_signals_impl(daemon_context_t *ctx)
         return DAEMON_ERROR_ALREADY_RUNNING;
     }
     
+    // Set global context for signal handlers to access
+    g_daemon_context = ctx;
+    
     daemon_error_t result;
     
     // Install SIGTERM handler (graceful shutdown)
@@ -223,6 +218,9 @@ cleanup_sigint:
 cleanup_sigterm:
     restore_signal_handler(SIGTERM, &old_sigterm_action);
     
+    // Clear global context on error
+    g_daemon_context = NULL;
+    
     return result;
 }
 
@@ -234,6 +232,12 @@ daemon_error_t daemon_cleanup_signals_impl(void)
     
     daemon_error_t result = DAEMON_SUCCESS;
     daemon_error_t temp_result;
+    
+    // Clear global context before cleanup
+    g_daemon_context = NULL;
+    
+    // Reset signal flags
+    daemon_reset_signal_flags();
     
     // Restore all signal handlers
     temp_result = restore_signal_handler(SIGTERM, &old_sigterm_action);
@@ -394,6 +398,68 @@ daemon_error_t daemon_wait_for_signal(int signal, int timeout_ms)
     pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     
     return DAEMON_ERROR_TIMEOUT;
+}
+
+// ============================================================================
+// SIGNAL STATUS CHECKING (for main thread)
+// ============================================================================
+
+/**
+ * Checks if a shutdown signal was received and processes it.
+ * This should be called periodically by the main daemon loop.
+ */
+daemon_error_t daemon_process_signals(daemon_context_t *ctx)
+{
+    if (!ctx) {
+        return DAEMON_ERROR_INVALID_CONTEXT;
+    }
+    
+    daemon_error_t result = DAEMON_SUCCESS;
+    
+    // Check for shutdown signal
+    if (shutdown_signal_received) {
+        shutdown_signal_received = 0; // Reset flag
+        daemon_request_shutdown(ctx);
+        daemon_set_error(ctx, DAEMON_SUCCESS, "Received shutdown signal, shutting down gracefully");
+        result = DAEMON_SUCCESS; // Shutdown is not an error
+    }
+    
+    // Check for reload signal
+    if (reload_signal_received) {
+        reload_signal_received = 0; // Reset flag
+        daemon_set_error(ctx, DAEMON_SUCCESS, "Received SIGHUP, configuration reload requested");
+        daemon_update_activity(ctx);
+        // In a full implementation, we would reload configuration here
+    }
+    
+    // Process pipe errors
+    if (pipe_errors_count > 0) {
+        // Add accumulated pipe errors to daemon stats
+        for (sig_atomic_t i = 0; i < pipe_errors_count; i++) {
+            daemon_increment_errors(ctx);
+        }
+        pipe_errors_count = 0; // Reset counter
+    }
+    
+    return result;
+}
+
+/**
+ * Checks if any signals are pending without processing them.
+ */
+bool daemon_has_pending_signals(void)
+{
+    return shutdown_signal_received || reload_signal_received || pipe_errors_count > 0;
+}
+
+/**
+ * Resets all signal flags (mainly for testing).
+ */
+void daemon_reset_signal_flags(void)
+{
+    shutdown_signal_received = 0;
+    reload_signal_received = 0;
+    pipe_errors_count = 0;
 }
 
 // ============================================================================
