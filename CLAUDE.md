@@ -23,7 +23,6 @@ Goxel is a cross-platform 3D voxel editor written primarily in C99 with some C++
 **🚀 v14.0 Daemon Features (ENTERPRISE-GRADE ARCHITECTURE):**
 - **JSON-RPC Server**: Unix socket-based server with full protocol compliance
 - **Concurrent Processing**: Worker pool architecture for parallel operations
-- **TypeScript Client**: Production-ready client library with connection pooling
 - **MCP Integration**: Seamless integration with Model Context Protocol tools
 - **Headless Rendering**: OSMesa-based image generation with software fallback
 - **Enterprise Deployment**: systemd/launchd support for production environments

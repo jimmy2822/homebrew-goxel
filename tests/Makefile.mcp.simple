@@ -1,0 +1,24 @@
+# Simple Makefile for MCP Handler Unit Tests
+
+CC = clang
+CFLAGS = -std=c99 -Wall -Wextra -O2 -g -I../src -I../ext_src -DTEST_BUILD
+
+# Source files  
+SOURCES = mcp_integration_demo.c ../src/daemon/mcp_handler.c ../ext_src/json/json.c ../ext_src/json/json-builder.c json_rpc_stub.c
+
+# Target
+TARGET = mcp_integration_demo
+
+all: $(TARGET) test
+
+$(TARGET): $(SOURCES)
+	$(CC) $(CFLAGS) -o $@ $(SOURCES) -lm
+
+test: $(TARGET)
+	@echo "Running MCP Handler Unit Tests..."
+	@./$(TARGET)
+
+clean:
+	rm -f $(TARGET)
+
+.PHONY: all test clean

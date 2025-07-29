@@ -1,0 +1,122 @@
+# Makefile for MCP Protocol Test Suite
+# Alex Kumar - Testing & Performance Validation Expert
+# Week 2, Days 1-2 (February 3-4, 2025)
+
+CC = gcc
+CFLAGS = -std=c99 -Wall -Wextra -O2 -g -pthread
+LDFLAGS = -pthread -lm
+
+# Include paths
+INCLUDES = -I../src -I../src/daemon -I../ext_src
+
+# Source directories
+SRCDIR = ../src
+DAEMON_DIR = $(SRCDIR)/daemon
+CORE_DIR = $(SRCDIR)/core
+
+# Object files needed for MCP testing
+MCP_OBJS = \
+	$(DAEMON_DIR)/mcp_handler.o \
+	$(DAEMON_DIR)/json_rpc.o \
+	$(CORE_DIR)/goxel_core.o
+
+# Test executables
+TEST_EXES = mcp_protocol_test_suite mcp_stress_test mcp_fuzzer
+
+# External JSON library
+JSON_LIB = ../ext_src/json/json.c ../src/core/utils/json.o
+
+.PHONY: all clean test test-mcp test-stress test-fuzz help
+
+all: $(TEST_EXES)
+
+# Build MCP test suite
+mcp_protocol_test_suite: mcp_protocol_test_suite.o $(MCP_OBJS) $(JSON_LIB)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+mcp_protocol_test_suite.o: mcp_protocol_test_suite.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
+
+# Build stress test
+mcp_stress_test: mcp_stress_test.o $(MCP_OBJS) $(JSON_LIB)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+mcp_stress_test.o: mcp_stress_test.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
+
+# Build fuzzer
+mcp_fuzzer: mcp_fuzzer.o $(MCP_OBJS) $(JSON_LIB)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+mcp_fuzzer.o: mcp_fuzzer.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
+
+# Build dependencies if needed
+$(DAEMON_DIR)/%.o: $(DAEMON_DIR)/%.c
+	$(MAKE) -C .. daemon_objs
+
+$(CORE_DIR)/%.o: $(CORE_DIR)/%.c
+	$(MAKE) -C .. core_objs
+
+$(JSON_LIB):
+	$(MAKE) -C ../ext_src/json
+
+# Test targets
+test: test-mcp test-stress
+
+test-mcp: mcp_protocol_test_suite
+	@echo "Running MCP Protocol Test Suite..."
+	@echo "=================================="
+	./mcp_protocol_test_suite
+
+test-stress: mcp_stress_test
+	@echo "Running MCP Stress Test..."
+	@echo "=========================="
+	./mcp_stress_test
+
+test-fuzz: mcp_fuzzer
+	@echo "Running MCP Fuzzer..."
+	@echo "===================="
+	./mcp_fuzzer
+
+# Performance validation specifically for Sarah's claims
+validate-sarah: mcp_protocol_test_suite
+	@echo "Validating Sarah's 0.28μs MCP processing claim..."
+	@echo "================================================"
+	./mcp_protocol_test_suite | tee sarah_validation_results.txt
+	@echo ""
+	@echo "Results saved to sarah_validation_results.txt"
+
+# Quick test for CI
+quick-test: mcp_protocol_test_suite
+	@echo "Running quick MCP validation..."
+	./mcp_protocol_test_suite --quick
+
+# Memory leak detection
+valgrind: mcp_protocol_test_suite
+	valgrind --leak-check=full --show-leak-kinds=all ./mcp_protocol_test_suite
+
+clean:
+	rm -f $(TEST_EXES) *.o *.txt *.log
+	rm -rf *.dSYM
+
+help:
+	@echo "MCP Test Suite Makefile"
+	@echo "======================="
+	@echo ""
+	@echo "Targets:"
+	@echo "  all           - Build all test executables"
+	@echo "  test          - Run basic MCP tests"
+	@echo "  test-mcp      - Run MCP protocol test suite"
+	@echo "  test-stress   - Run MCP stress tests"
+	@echo "  test-fuzz     - Run MCP fuzzing tests"
+	@echo "  validate-sarah - Validate Sarah's performance claims"
+	@echo "  quick-test    - Quick validation for CI"
+	@echo "  valgrind      - Run with memory leak detection"
+	@echo "  clean         - Clean build artifacts"
+	@echo "  help          - Show this help"
+	@echo ""
+	@echo "Usage for Alex's Week 2 testing:"
+	@echo "  make test          # Run all basic tests"
+	@echo "  make validate-sarah # Test Sarah's 0.28μs claim"
+	@echo "  make valgrind      # Check for memory leaks"

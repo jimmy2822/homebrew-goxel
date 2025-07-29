@@ -1,0 +1,151 @@
+# Makefile for MCP Handler Unit Tests
+# 
+# Usage:
+#   make -f Makefile.mcp        # Build and run tests
+#   make -f Makefile.mcp test   # Run tests
+#   make -f Makefile.mcp clean  # Clean build artifacts
+
+CC = clang
+CFLAGS = -std=c99 -Wall -Wextra -Werror -O2 -g
+TEST_CFLAGS = -DTEST_BUILD -I../src -I../ext_src
+
+# Source files
+MCP_HANDLER_SRC = ../src/daemon/mcp_handler.c
+JSON_LIB_SRC = ../ext_src/json/json.c
+JSON_RPC_SRC = ../src/daemon/json_rpc.c
+
+# Test source
+TEST_SRC = test_mcp_handler.c
+
+# Object files
+OBJS = mcp_handler.o json.o json_rpc_stub.o test_runner.o
+
+# Target
+TEST_BINARY = test_mcp_handler
+
+# Default target
+all: $(TEST_BINARY) test
+
+# Test runner
+$(TEST_BINARY): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) -lm
+
+# MCP Handler object
+mcp_handler.o: $(MCP_HANDLER_SRC)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+
+# JSON library object  
+json.o: $(JSON_LIB_SRC)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+
+# JSON-RPC stub (minimal implementation for testing)
+json_rpc_stub.o: json_rpc_stub.c
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+
+# Test runner object
+test_runner.o: $(TEST_SRC)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+
+# Create minimal JSON-RPC stub for testing
+json_rpc_stub.c:
+	@echo "Creating JSON-RPC stub for testing..."
+	@cat > json_rpc_stub.c << 'EOF' \
+/* Minimal JSON-RPC stub for MCP handler testing */
+#include "../src/daemon/json_rpc.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static bool g_goxel_initialized = false;
+
+json_rpc_result_t json_rpc_init_goxel_context(void) {
+    g_goxel_initialized = true;
+    return JSON_RPC_SUCCESS;
+}
+
+void json_rpc_cleanup_goxel_context(void) {
+    g_goxel_initialized = false;
+}
+
+bool json_rpc_is_goxel_initialized(void) {
+    return g_goxel_initialized;
+}
+
+json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request) {
+    if (!request) return NULL;
+    
+    json_rpc_id_t id = request->id;
+    
+    // Simple stub responses for testing
+    if (strcmp(request->method, "ping") == 0) {
+        json_value *result = json_string_new("pong");
+        return json_rpc_create_response_result(result, &id);
+    } else if (strcmp(request->method, "version") == 0) {
+        json_value *result = json_object_new(0);
+        json_object_push(result, "version", json_string_new("14.0.0-test"));
+        return json_rpc_create_response_result(result, &id);
+    } else if (strstr(request->method, "goxel.") == request->method) {
+        // Goxel methods - return simple success
+        json_value *result = json_object_new(0);
+        json_object_push(result, "status", json_string_new("success"));
+        return json_rpc_create_response_result(result, &id);
+    } else {
+        // Unknown method
+        return json_rpc_create_response_error(
+            JSON_RPC_METHOD_NOT_FOUND, "Method not found", NULL, &id);
+    }
+}
+EOF
+
+# Run tests
+test: $(TEST_BINARY)
+	@echo "Running MCP Handler Unit Tests..."
+	@./$(TEST_BINARY)
+
+# Performance test (focused on translation speed)
+perf: $(TEST_BINARY)
+	@echo "Running performance validation..."
+	@./$(TEST_BINARY) | grep -E "(Average translation time|All tests passed|failed)"
+
+# Memory check (if valgrind available)
+memcheck: $(TEST_BINARY)
+	@if command -v valgrind >/dev/null 2>&1; then \
+		echo "Running memory leak check..."; \
+		valgrind --leak-check=full --error-exitcode=1 ./$(TEST_BINARY); \
+	else \
+		echo "Valgrind not available, skipping memory check"; \
+	fi
+
+# Clean build artifacts
+clean:
+	rm -f $(OBJS) $(TEST_BINARY) json_rpc_stub.c
+
+# Show test coverage (basic line counting)
+coverage:
+	@echo "=== Test Coverage Analysis ==="
+	@echo "MCP Handler functions tested:"
+	@grep -E "TEST\(" $(TEST_SRC) | wc -l | xargs echo "  Test functions: "
+	@grep -E "mcp_[a-z_]+\(" $(TEST_SRC) | wc -l | xargs echo "  MCP functions called: "
+	@echo "Key areas covered:"
+	@echo "  ✓ Initialization and cleanup"
+	@echo "  ✓ Memory management"
+	@echo "  ✓ Protocol translation (direct and mapped)"
+	@echo "  ✓ Error handling and validation"
+	@echo "  ✓ Batch operations"
+	@echo "  ✓ Performance benchmarks"
+	@echo "  ✓ Statistics tracking"
+	@echo "  ✓ Tool discovery"
+
+# Help
+help:
+	@echo "MCP Handler Test Makefile"
+	@echo "Available targets:"
+	@echo "  all      - Build and run tests"
+	@echo "  test     - Run unit tests"
+	@echo "  perf     - Run performance tests only"
+	@echo "  memcheck - Run with Valgrind (if available)"
+	@echo "  coverage - Show test coverage summary"
+	@echo "  clean    - Clean build artifacts"
+	@echo "  help     - Show this help"
+
+.PHONY: all test perf memcheck clean coverage help

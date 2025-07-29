@@ -22,6 +22,7 @@
 #include "json_rpc.h"
 #include "socket_server.h"
 #include "json_socket_handler.h"
+#include "mcp_handler.h"
 #include "../core/goxel_core.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,7 +55,7 @@ static int64_t get_current_time_us(void);
 // COMMAND LINE OPTIONS
 // ============================================================================
 
-static const char *short_options = "hvVDfp:s:c:l:w:u:g:j:q:m:";
+static const char *short_options = "hvVDfp:s:c:l:w:u:g:j:q:m:P:";
 
 static const struct option long_options[] = {
     {"help",          no_argument,       NULL, 'h'},
@@ -72,6 +73,7 @@ static const struct option long_options[] = {
     {"workers",       required_argument, NULL, 'j'},
     {"queue-size",    required_argument, NULL, 'q'},
     {"max-connections", required_argument, NULL, 'm'},
+    {"protocol",       required_argument, NULL, 'P'},
     {"priority-queue", no_argument,      NULL, 1005},
     {"test-signals",  no_argument,       NULL, 1000},
     {"test-lifecycle", no_argument,      NULL, 1001},
@@ -81,6 +83,22 @@ static const struct option long_options[] = {
     {"reload",        no_argument,       NULL, 1004},
     {NULL, 0, NULL, 0}
 };
+
+// ============================================================================
+// PROTOCOL DEFINITIONS
+// ============================================================================
+
+// Protocol modes
+typedef enum {
+    PROTOCOL_AUTO = 0,        /**< Auto-detect protocol */
+    PROTOCOL_JSON_RPC = 1,    /**< JSON-RPC only */
+    PROTOCOL_MCP = 2          /**< MCP only */
+} protocol_mode_t;
+
+// Magic bytes for protocol detection (4 bytes)
+#define JSONRPC_MAGIC 0x7B227661  // {"version or {"method or similar JSON-RPC start
+#define MCP_MAGIC     0x7B22746F  // {"tool or similar MCP start
+#define MAGIC_DETECT_SIZE 4
 
 // ============================================================================
 // PROGRAM CONFIGURATION
@@ -109,10 +127,25 @@ typedef struct {
     int queue_size;
     bool enable_priority_queue;
     int max_connections;
+    // Protocol configuration
+    protocol_mode_t protocol_mode;
+    const char *protocol_string;
 } program_config_t;
 
 /**
- * Concurrent daemon context structure.
+ * Protocol statistics for dual-mode operation
+ */
+typedef struct {
+    uint64_t jsonrpc_requests;
+    uint64_t mcp_requests;
+    uint64_t protocol_switches;
+    uint64_t protocol_detection_time_us;
+    uint64_t auto_detections;
+    uint64_t detection_errors;
+} protocol_stats_t;
+
+/**
+ * Concurrent daemon context structure with dual-mode support.
  */
 typedef struct {
     // Core components
@@ -131,12 +164,17 @@ typedef struct {
     bool running;
     pthread_mutex_t state_mutex;
     
+    // Protocol handling
+    bool mcp_initialized;
+    pthread_mutex_t protocol_mutex;
+    
     // Statistics
     struct {
         uint64_t requests_processed;
         uint64_t requests_failed;
         uint64_t concurrent_connections;
         int64_t start_time_us;
+        protocol_stats_t protocol_stats;
     } stats;
 } concurrent_daemon_t;
 
@@ -178,6 +216,7 @@ static void print_help(void)
     printf("  -j, --workers NUM       Number of worker threads (default: 4)\n");
     printf("  -q, --queue-size NUM    Request queue size (default: 1024)\n");
     printf("  -m, --max-connections NUM Maximum concurrent connections (default: 256)\n");
+    printf("  -P, --protocol PROTO    Protocol mode: auto|jsonrpc|mcp (default: auto)\n");
     printf("      --priority-queue    Enable priority-based request processing\n");
     printf("\n");
     printf("Control Commands:\n");
@@ -189,9 +228,15 @@ static void print_help(void)
     printf("      --test-signals      Test signal handling functionality\n");
     printf("      --test-lifecycle    Test daemon lifecycle management\n");
     printf("\n");
+    printf("Protocol Support:\n");
+    printf("  auto      - Auto-detect JSON-RPC or MCP (4-byte magic detection)\n");
+    printf("  jsonrpc   - JSON-RPC protocol only (Goxel v13 compatible)\n");
+    printf("  mcp       - Model Context Protocol only (LLM integration)\n");
+    printf("\n");
     printf("Examples:\n");
     printf("  %s --daemonize                    # Start daemon in background\n", PROGRAM_NAME);
     printf("  %s --foreground --verbose         # Start in foreground with verbose output\n", PROGRAM_NAME);
+    printf("  %s --protocol=mcp                 # Start with MCP protocol only\n", PROGRAM_NAME);
     printf("  %s --status                       # Check daemon status\n", PROGRAM_NAME);
     printf("  %s --stop                         # Stop running daemon\n", PROGRAM_NAME);
     printf("  %s --test-lifecycle               # Test daemon functionality\n", PROGRAM_NAME);
@@ -486,6 +531,9 @@ static int parse_command_line(int argc, char *argv[], program_config_t *config)
     config->queue_size = 1024;
     config->enable_priority_queue = false;
     config->max_connections = 256;
+    // Protocol defaults
+    config->protocol_mode = PROTOCOL_AUTO;
+    config->protocol_string = "auto";
     
     int opt;
     int option_index = 0;
@@ -551,6 +599,19 @@ static int parse_command_line(int argc, char *argv[], program_config_t *config)
                     return -1;
                 }
                 break;
+            case 'P':
+                config->protocol_string = optarg;
+                if (strcmp(optarg, "auto") == 0) {
+                    config->protocol_mode = PROTOCOL_AUTO;
+                } else if (strcmp(optarg, "jsonrpc") == 0) {
+                    config->protocol_mode = PROTOCOL_JSON_RPC;
+                } else if (strcmp(optarg, "mcp") == 0) {
+                    config->protocol_mode = PROTOCOL_MCP;
+                } else {
+                    fprintf(stderr, "Invalid protocol: %s (must be auto, jsonrpc, or mcp)\n", optarg);
+                    return -1;
+                }
+                break;
             case 1000:
                 config->test_signals = true;
                 break;
@@ -584,7 +645,7 @@ static int parse_command_line(int argc, char *argv[], program_config_t *config)
 }
 
 // ============================================================================
-// CONCURRENT PROCESSING IMPLEMENTATION
+// FORWARD DECLARATIONS FOR ASYNC PROCESSING
 // ============================================================================
 
 /**
@@ -599,9 +660,253 @@ typedef struct {
 } request_process_data_t;
 
 /**
+ * Cleanup function for request processing data.
+ */
+static void cleanup_request_data(void *request_data);
+
+// ============================================================================
+// PROTOCOL DETECTION AND HANDLING
+// ============================================================================
+
+/**
+ * Detect protocol from message magic bytes (4 bytes)
+ * Returns detected protocol or PROTOCOL_AUTO if unclear
+ */
+static protocol_mode_t detect_protocol_from_magic(const char *data, size_t length)
+{
+    if (length < MAGIC_DETECT_SIZE) {
+        return PROTOCOL_AUTO; // Need more data
+    }
+    
+    // Check for JSON-RPC patterns
+    if (data[0] == '{' && data[1] == '"') {
+        // Look for common JSON-RPC starts: {"method, {"id, {"jsonrpc
+        if (strncmp(data, "{\"method", 8) == 0 ||
+            strncmp(data, "{\"id", 4) == 0 ||
+            strncmp(data, "{\"jsonrpc", 9) == 0) {
+            return PROTOCOL_JSON_RPC;
+        }
+        
+        // Look for MCP patterns: {"tool
+        if (strncmp(data, "{\"tool", 6) == 0) {
+            return PROTOCOL_MCP;
+        }
+    }
+    
+    // Default to JSON-RPC for any JSON-like structure
+    if (data[0] == '{') {
+        return PROTOCOL_JSON_RPC;
+    }
+    
+    return PROTOCOL_AUTO;
+}
+
+/**
+ * Handle MCP protocol message
+ */
+static socket_message_t *handle_mcp_message(concurrent_daemon_t *daemon,
+                                           socket_client_t *client,
+                                           const socket_message_t *message)
+{
+    if (!daemon->mcp_initialized) {
+        // Initialize MCP handler if not done
+        mcp_error_code_t result = mcp_handler_init();
+        if (result != MCP_SUCCESS) {
+            LOG_ERROR("Failed to initialize MCP handler: %s", mcp_error_string(result));
+            return NULL;
+        }
+        daemon->mcp_initialized = true;
+    }
+    
+    // Parse MCP request
+    char *json_str = malloc(message->length + 1);
+    if (!json_str) {
+        return NULL;
+    }
+    memcpy(json_str, message->data, message->length);
+    json_str[message->length] = '\0';
+    
+    mcp_tool_request_t *mcp_request = NULL;
+    mcp_error_code_t parse_result = mcp_parse_request(json_str, &mcp_request);
+    free(json_str);
+    
+    if (parse_result != MCP_SUCCESS) {
+        LOG_ERROR("Failed to parse MCP request: %s", mcp_error_string(parse_result));
+        return NULL;
+    }
+    
+    // Handle MCP request
+    mcp_tool_response_t *mcp_response = NULL;
+    uint64_t start_time = get_current_time_us();
+    
+    mcp_error_code_t handle_result = mcp_handle_tool_request(mcp_request, &mcp_response);
+    
+    uint64_t end_time = get_current_time_us();
+    
+    // Update statistics
+    pthread_mutex_lock(&daemon->state_mutex);
+    daemon->stats.protocol_stats.mcp_requests++;
+    daemon->stats.protocol_stats.protocol_detection_time_us += (end_time - start_time);
+    if (handle_result == MCP_SUCCESS) {
+        daemon->stats.requests_processed++;
+    } else {
+        daemon->stats.requests_failed++;
+    }
+    pthread_mutex_unlock(&daemon->state_mutex);
+    
+    socket_message_t *response_msg = NULL;
+    
+    if (handle_result == MCP_SUCCESS && mcp_response) {
+        // Serialize MCP response
+        char *response_json = NULL;
+        mcp_error_code_t serialize_result = mcp_serialize_response(mcp_response, &response_json);
+        
+        if (serialize_result == MCP_SUCCESS && response_json) {
+            response_msg = socket_message_create_json(message->id, 0, response_json);
+            free(response_json);
+        }
+    }
+    
+    // Cleanup
+    mcp_free_request(mcp_request);
+    mcp_free_response(mcp_response);
+    
+    return response_msg;
+}
+
+/**
+ * Handle JSON-RPC protocol message (existing logic)
+ */
+static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
+                                               socket_client_t *client,
+                                               const socket_message_t *message)
+{
+    // Existing JSON-RPC handling logic from the original handle_socket_message
+    if (!daemon || !daemon->running || !message || !message->data) {
+        return NULL;
+    }
+    
+    // Null-terminate the message for parsing
+    char *json_str = malloc(message->length + 1);
+    if (!json_str) {
+        LOG_ERROR("Failed to allocate memory for JSON string");
+        return NULL;
+    }
+    memcpy(json_str, message->data, message->length);
+    json_str[message->length] = '\0';
+    
+    // Check if this is a batch request
+    const char *trimmed = json_str;
+    while (*trimmed && (*trimmed == ' ' || *trimmed == '\t' || *trimmed == '\n' || *trimmed == '\r')) {
+        trimmed++;
+    }
+    
+    bool is_batch = (*trimmed == '[');
+    
+    if (is_batch) {
+        // Handle batch request synchronously
+        char *response_str = NULL;
+        json_rpc_result_t batch_result = json_rpc_handle_batch(json_str, &response_str);
+        free(json_str);
+        
+        // Update statistics
+        pthread_mutex_lock(&daemon->state_mutex);
+        daemon->stats.protocol_stats.jsonrpc_requests++;
+        if (batch_result == JSON_RPC_SUCCESS) {
+            daemon->stats.requests_processed++;
+        } else {
+            daemon->stats.requests_failed++;
+        }
+        pthread_mutex_unlock(&daemon->state_mutex);
+        
+        if (batch_result == JSON_RPC_SUCCESS && response_str) {
+            socket_message_t *response_msg = socket_message_create_json(message->id, 0, response_str);
+            free(response_str);
+            return response_msg;
+        }
+        return NULL;
+    }
+    
+    // Single JSON-RPC request - use existing async processing
+    json_rpc_request_t *rpc_request = NULL;
+    json_rpc_result_t parse_result = json_rpc_parse_request(json_str, &rpc_request);
+    free(json_str);
+    
+    if (parse_result != JSON_RPC_SUCCESS || !rpc_request) {
+        // Send error response for invalid requests
+        json_rpc_response_t error_response = {0};
+        json_rpc_create_id_null(&error_response.id);
+        error_response.result = NULL;
+        error_response.error.code = JSON_RPC_PARSE_ERROR;
+        error_response.error.message = "Invalid JSON-RPC request";
+        error_response.error.data = NULL;
+        
+        char *error_json = NULL;
+        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
+            socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
+            free(error_json);
+            return error_msg;
+        }
+        return NULL;
+    }
+    
+    // Create request processing data for async handling
+    request_process_data_t *process_data = calloc(1, sizeof(request_process_data_t));
+    if (!process_data) {
+        json_rpc_free_request(rpc_request);
+        return NULL;
+    }
+    
+    process_data->client = client;
+    process_data->rpc_request = rpc_request;
+    process_data->socket_server = daemon->socket_server;
+    process_data->request_id = message->id;
+    
+    // Submit to worker pool
+    worker_pool_error_t submit_result = worker_pool_submit_request(daemon->worker_pool,
+                                                                  process_data,
+                                                                  WORKER_PRIORITY_NORMAL);
+    
+    if (submit_result != WORKER_POOL_SUCCESS) {
+        cleanup_request_data(process_data);
+        
+        // Send error response for queue full
+        json_rpc_response_t error_response = {0};
+        json_rpc_clone_id(&rpc_request->id, &error_response.id);
+        error_response.result = NULL;
+        error_response.error.code = JSON_RPC_INTERNAL_ERROR;
+        error_response.error.message = "Server overloaded - request queue full";
+        error_response.error.data = NULL;
+        
+        char *error_json = NULL;
+        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
+            socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
+            free(error_json);
+            json_rpc_free_id(&error_response.id);
+            return error_msg;
+        }
+        json_rpc_free_id(&error_response.id);
+    }
+    
+    // Update statistics
+    pthread_mutex_lock(&daemon->state_mutex);
+    daemon->stats.protocol_stats.jsonrpc_requests++;
+    pthread_mutex_unlock(&daemon->state_mutex);
+    
+    // Return NULL since we process asynchronously
+    return NULL;
+}
+
+// ============================================================================
+// CONCURRENT PROCESSING IMPLEMENTATION
+// =============================================================================
+
+/**
  * Worker thread processing function.
  * Processes JSON-RPC requests using Goxel core functionality.
  */
+static int process_rpc_request(void *request_data, int worker_id, void *context);
+
 static int process_rpc_request(void *request_data, int worker_id, void *context)
 {
     concurrent_daemon_t *daemon = (concurrent_daemon_t*)context;
@@ -676,8 +981,8 @@ static void cleanup_request_data(void *request_data)
 }
 
 /**
- * Socket server message handler.
- * Receives messages from clients and queues them for processing.
+ * Unified socket server message handler with dual-mode protocol support.
+ * Detects protocol automatically and routes to appropriate handler.
  */
 static socket_message_t *handle_socket_message(socket_server_t *server,
                                               socket_client_t *client,
@@ -690,105 +995,46 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
         return NULL;
     }
     
-    // Null-terminate the message for parsing
-    char *json_str = malloc(message->length + 1);
-    if (!json_str) {
-        LOG_ERROR("Failed to allocate memory for JSON string");
-        return NULL;
-    }
-    memcpy(json_str, message->data, message->length);
-    json_str[message->length] = '\0';
+    uint64_t detection_start = get_current_time_us();
+    protocol_mode_t detected_protocol = PROTOCOL_JSON_RPC; // Default fallback
     
-    // Check if this is a batch request by peeking at the first character
-    const char *trimmed = json_str;
-    while (*trimmed && (*trimmed == ' ' || *trimmed == '\t' || *trimmed == '\n' || *trimmed == '\r')) {
-        trimmed++;
-    }
-    
-    bool is_batch = (*trimmed == '[');
-    
-    if (is_batch) {
-        // Handle batch request synchronously for now
-        // TODO: Consider processing batch requests in parallel
-        char *response_str = NULL;
-        json_rpc_result_t batch_result = json_rpc_handle_batch(json_str, &response_str);
-        free(json_str);
-        
-        if (batch_result == JSON_RPC_SUCCESS && response_str) {
-            socket_message_t *response_msg = socket_message_create_json(message->id, 0, response_str);
-            free(response_str);
-            return response_msg;
-        }
-        return NULL;
+    // Protocol detection based on configuration
+    switch (daemon->config->protocol_mode) {
+        case PROTOCOL_AUTO:
+            detected_protocol = detect_protocol_from_magic((char*)message->data, message->length);
+            if (detected_protocol == PROTOCOL_AUTO) {
+                // Fallback to JSON-RPC if detection is unclear
+                detected_protocol = PROTOCOL_JSON_RPC;
+            }
+            pthread_mutex_lock(&daemon->state_mutex);
+            daemon->stats.protocol_stats.auto_detections++;
+            daemon->stats.protocol_stats.protocol_detection_time_us += (get_current_time_us() - detection_start);
+            pthread_mutex_unlock(&daemon->state_mutex);
+            break;
+            
+        case PROTOCOL_JSON_RPC:
+            detected_protocol = PROTOCOL_JSON_RPC;
+            break;
+            
+        case PROTOCOL_MCP:
+            detected_protocol = PROTOCOL_MCP;
+            break;
     }
     
-    // Single request - process asynchronously
-    json_rpc_request_t *rpc_request = NULL;
-    json_rpc_result_t parse_result = json_rpc_parse_request(json_str, &rpc_request);
-    free(json_str);
-    
-    if (parse_result != JSON_RPC_SUCCESS || !rpc_request) {
-        // Send error response for invalid requests
-        json_rpc_response_t error_response = {0};
-        json_rpc_create_id_null(&error_response.id);
-        error_response.result = NULL;
-        error_response.error.code = JSON_RPC_PARSE_ERROR;
-        error_response.error.message = "Invalid JSON-RPC request";
-        error_response.error.data = NULL;
-        
-        char *error_json = NULL;
-        size_t error_len = 0; (void)error_len; // Silence unused warning
-        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
-            error_len = strlen(error_json);
-            socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
-            free(error_json);
-            return error_msg;
-        }
-        return NULL;
+    // Route to appropriate protocol handler
+    socket_message_t *response = NULL;
+    switch (detected_protocol) {
+        case PROTOCOL_MCP:
+            response = handle_mcp_message(daemon, client, message);
+            break;
+            
+        case PROTOCOL_JSON_RPC:
+        default:
+            response = handle_jsonrpc_message(daemon, client, message);
+            break;
     }
     
-    // Create request processing data
-    request_process_data_t *process_data = calloc(1, sizeof(request_process_data_t));
-    if (!process_data) {
-        json_rpc_free_request(rpc_request);
-        return NULL;
-    }
-    
-    process_data->client = client;
-    process_data->rpc_request = rpc_request;
-    process_data->socket_server = server;
-    process_data->request_id = message->id;
-    
-    // Submit to worker pool
-    worker_pool_error_t submit_result = worker_pool_submit_request(daemon->worker_pool,
-                                                                  process_data,
-                                                                  WORKER_PRIORITY_NORMAL);
-    
-    if (submit_result != WORKER_POOL_SUCCESS) {
-        cleanup_request_data(process_data);
-        
-        // Send error response for queue full
-        json_rpc_response_t error_response = {0};
-        json_rpc_clone_id(&rpc_request->id, &error_response.id);
-        error_response.result = NULL;
-        error_response.error.code = JSON_RPC_INTERNAL_ERROR;
-        error_response.error.message = "Server overloaded - request queue full";
-        error_response.error.data = NULL;
-        
-        char *error_json = NULL;
-        size_t error_len = 0; (void)error_len; // Silence unused warning
-        if (json_rpc_serialize_response(&error_response, &error_json) == JSON_RPC_SUCCESS) {
-            error_len = strlen(error_json);
-            socket_message_t *error_msg = socket_message_create_json(message->id, 0, error_json);
-            free(error_json);
-            json_rpc_free_id(&error_response.id);
-            return error_msg;
-        }
-        json_rpc_free_id(&error_response.id);
-    }
-    
-    // Return NULL since we process asynchronously
-    return NULL;
+    return response;
 }
 
 /**
@@ -802,9 +1048,11 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     daemon->config = (program_config_t*)config;
     daemon->running = false;
     daemon->num_contexts = config->worker_threads;
+    daemon->mcp_initialized = false;
     
-    // Initialize state mutex
-    if (pthread_mutex_init(&daemon->state_mutex, NULL) != 0) {
+    // Initialize state and protocol mutexes
+    if (pthread_mutex_init(&daemon->state_mutex, NULL) != 0 ||
+        pthread_mutex_init(&daemon->protocol_mutex, NULL) != 0) {
         free(daemon);
         return NULL;
     }
@@ -818,15 +1066,29 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     }
     
     // Initialize Goxel contexts - one per worker thread
-    // For now, we'll initialize the first context only and share it
-    // TODO: Create separate contexts per worker for true thread isolation
     json_rpc_result_t init_result = json_rpc_init_goxel_context();
     if (init_result != JSON_RPC_SUCCESS) {
         LOG_ERROR("Failed to initialize Goxel context: %s", json_rpc_result_string(init_result));
         pthread_mutex_destroy(&daemon->state_mutex);
+        pthread_mutex_destroy(&daemon->protocol_mutex);
         free(daemon->goxel_contexts);
         free(daemon);
         return NULL;
+    }
+    
+    // Initialize MCP handler if MCP-only mode
+    if (config->protocol_mode == PROTOCOL_MCP) {
+        mcp_error_code_t mcp_result = mcp_handler_init();
+        if (mcp_result != MCP_SUCCESS) {
+            LOG_ERROR("Failed to initialize MCP handler: %s", mcp_error_string(mcp_result));
+            json_rpc_cleanup_goxel_context();
+            pthread_mutex_destroy(&daemon->state_mutex);
+            pthread_mutex_destroy(&daemon->protocol_mutex);
+            free(daemon->goxel_contexts);
+            free(daemon);
+            return NULL;
+        }
+        daemon->mcp_initialized = true;
     }
     
     for (int i = 0; i < daemon->num_contexts; i++) {
@@ -855,6 +1117,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         }
         free(daemon->goxel_contexts);
         pthread_mutex_destroy(&daemon->state_mutex);
+        pthread_mutex_destroy(&daemon->protocol_mutex);
         free(daemon);
         return NULL;
     }
@@ -876,6 +1139,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         }
         free(daemon->goxel_contexts);
         pthread_mutex_destroy(&daemon->state_mutex);
+        pthread_mutex_destroy(&daemon->protocol_mutex);
         free(daemon);
         return NULL;
     }
@@ -925,6 +1189,11 @@ static void destroy_concurrent_daemon(concurrent_daemon_t *daemon)
         request_queue_destroy(daemon->request_queue);
     }
     
+    // Cleanup protocol handlers
+    if (daemon->mcp_initialized) {
+        mcp_handler_cleanup();
+    }
+    
     // Cleanup Goxel contexts
     if (daemon->goxel_contexts) {
         // Cleanup the shared Goxel context
@@ -933,6 +1202,7 @@ static void destroy_concurrent_daemon(concurrent_daemon_t *daemon)
     }
     
     pthread_mutex_destroy(&daemon->state_mutex);
+    pthread_mutex_destroy(&daemon->protocol_mutex);
     free(daemon);
 }
 
@@ -949,6 +1219,7 @@ static int run_daemon(const program_config_t *prog_config)
         printf("  Log file: %s\n", prog_config->log_file);
         printf("  Working directory: %s\n", prog_config->working_dir);
         printf("  Daemonize: %s\n", prog_config->daemonize ? "yes" : "no");
+        printf("  Protocol mode: %s\n", prog_config->protocol_string);
         printf("  Worker threads: %d\n", prog_config->worker_threads);
         printf("  Queue size: %d\n", prog_config->queue_size);
         printf("  Max connections: %d\n", prog_config->max_connections);
@@ -989,7 +1260,11 @@ static int run_daemon(const program_config_t *prog_config)
     if (prog_config->verbose && !prog_config->daemonize) {
         printf("Concurrent daemon started successfully (PID: %d)\n", getpid());
         printf("  Socket server listening on: %s\n", prog_config->socket_path);
+        printf("  Protocol mode: %s\n", prog_config->protocol_string);
         printf("  Worker pool with %d threads ready\n", prog_config->worker_threads);
+        if (daemon->mcp_initialized) {
+            printf("  MCP handler initialized and ready\n");
+        }
         printf("Press Ctrl+C to stop the daemon\n");
     }
     
@@ -1017,6 +1292,16 @@ static int run_daemon(const program_config_t *prog_config)
             printf("  Requests processed: %llu\n", (unsigned long long)worker_stats.requests_processed);
             printf("  Requests failed: %llu\n", (unsigned long long)worker_stats.requests_failed);
             printf("  Average processing time: %llu μs\n", (unsigned long long)worker_stats.average_processing_time_us);
+            
+            // Protocol-specific statistics
+            printf("  JSON-RPC requests: %llu\n", (unsigned long long)daemon->stats.protocol_stats.jsonrpc_requests);
+            printf("  MCP requests: %llu\n", (unsigned long long)daemon->stats.protocol_stats.mcp_requests);
+            if (daemon->config->protocol_mode == PROTOCOL_AUTO) {
+                printf("  Auto-detections: %llu\n", (unsigned long long)daemon->stats.protocol_stats.auto_detections);
+                printf("  Avg detection time: %llu μs\n", 
+                       daemon->stats.protocol_stats.auto_detections > 0 ?
+                       (unsigned long long)(daemon->stats.protocol_stats.protocol_detection_time_us / daemon->stats.protocol_stats.auto_detections) : 0);
+            }
         }
         
         socket_server_stats_t server_stats;

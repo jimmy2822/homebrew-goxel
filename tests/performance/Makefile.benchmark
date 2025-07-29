@@ -1,0 +1,108 @@
+# Makefile for Goxel Performance Benchmark Suite
+# Author: Alex Kumar
+# Date: January 29, 2025
+
+CC = gcc
+CFLAGS = -Wall -Wextra -O2 -g -pthread -std=c99 -D_GNU_SOURCE
+LDFLAGS = -lm -lpthread
+
+# Build targets
+TARGETS = benchmark_suite benchmark_baseline benchmark_regression
+
+# Source files
+SUITE_SRC = benchmark_suite.c
+BASELINE_SRC = benchmark_baseline.c
+REGRESSION_SRC = benchmark_regression.c
+
+# Output directory
+BUILD_DIR = build
+RESULTS_DIR = results
+
+.PHONY: all clean test analyze charts regression
+
+all: $(TARGETS)
+
+# Create directories
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(RESULTS_DIR):
+	mkdir -p $(RESULTS_DIR)
+
+# Build benchmark suite
+benchmark_suite: $(BUILD_DIR) $(SUITE_SRC)
+	$(CC) $(CFLAGS) $(SUITE_SRC) -o $(BUILD_DIR)/benchmark_suite $(LDFLAGS)
+
+# Build baseline collector
+benchmark_baseline: $(BUILD_DIR) benchmark_framework.c
+	$(CC) $(CFLAGS) -DBASELINE_MODE benchmark_framework.c -o $(BUILD_DIR)/benchmark_baseline $(LDFLAGS)
+
+# Build regression tester
+benchmark_regression: $(BUILD_DIR) benchmark_framework.c
+	$(CC) $(CFLAGS) -DREGRESSION_MODE benchmark_framework.c -o $(BUILD_DIR)/benchmark_regression $(LDFLAGS)
+
+# Run full benchmark suite
+test: benchmark_suite $(RESULTS_DIR)
+	@echo "🚀 Running Goxel Performance Benchmark Suite..."
+	@$(BUILD_DIR)/benchmark_suite | tee $(RESULTS_DIR)/benchmark_output.log
+	@mv benchmark_results.json $(RESULTS_DIR)/benchmark_results_$(shell date +%Y%m%d_%H%M%S).json
+	@ln -sf $(RESULTS_DIR)/benchmark_results_$(shell date +%Y%m%d_%H%M%S).json $(RESULTS_DIR)/latest.json
+	@echo "✅ Benchmarks completed!"
+
+# Collect baseline measurements
+baseline: benchmark_baseline $(RESULTS_DIR)
+	@echo "📏 Collecting baseline measurements..."
+	@$(BUILD_DIR)/benchmark_baseline
+	@mv benchmark_results.json $(RESULTS_DIR)/baseline.json
+	@echo "✅ Baseline established!"
+
+# Run regression tests
+regression: benchmark_regression $(RESULTS_DIR)
+	@echo "🔍 Running regression tests..."
+	@$(BUILD_DIR)/benchmark_regression
+	@python3 analyze_benchmarks.py benchmark_results.json --baseline $(RESULTS_DIR)/baseline.json
+
+# Analyze latest results
+analyze: $(RESULTS_DIR)/latest.json
+	@echo "📊 Analyzing benchmark results..."
+	@python3 analyze_benchmarks.py $(RESULTS_DIR)/latest.json
+
+# Generate visualization charts
+charts: $(RESULTS_DIR)/latest.json
+	@echo "📈 Generating performance charts..."
+	@python3 analyze_benchmarks.py $(RESULTS_DIR)/latest.json --charts
+	@echo "✅ Charts generated!"
+
+# Run continuous benchmark loop
+continuous:
+	@echo "🔄 Starting continuous benchmarking..."
+	@while true; do \
+		make test; \
+		make analyze; \
+		echo "Sleeping for 5 minutes..."; \
+		sleep 300; \
+	done
+
+# Clean build artifacts
+clean:
+	rm -rf $(BUILD_DIR)
+	rm -f *.png *.json benchmark_report.md
+
+# Clean all including results
+clean-all: clean
+	rm -rf $(RESULTS_DIR)
+
+# Help
+help:
+	@echo "Goxel Performance Benchmark Suite"
+	@echo "================================="
+	@echo "Available targets:"
+	@echo "  make all        - Build all benchmark tools"
+	@echo "  make test       - Run full benchmark suite"
+	@echo "  make baseline   - Establish baseline measurements"
+	@echo "  make regression - Check for performance regressions"
+	@echo "  make analyze    - Analyze latest results"
+	@echo "  make charts     - Generate visualization charts"
+	@echo "  make continuous - Run benchmarks continuously"
+	@echo "  make clean      - Clean build artifacts"
+	@echo "  make clean-all  - Clean everything including results"

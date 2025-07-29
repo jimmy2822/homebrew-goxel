@@ -665,25 +665,57 @@ socket_error_t socket_server_start(socket_server_t *server)
             worker->next = server->workers;
             server->workers = worker;
             
-            if (pthread_create(&worker->thread, NULL, worker_thread_func, worker) != 0) {
-                SET_ERROR(server, "Failed to create worker thread %d", i);
+            // Configure thread attributes for reduced memory usage
+            pthread_attr_t thread_attr;
+            if (pthread_attr_init(&thread_attr) != 0) {
+                SET_ERROR(server, "Failed to initialize thread attributes for worker %d", i);
                 worker->running = false;
                 UNLOCK_MUTEX(&server->server_mutex);
                 socket_server_stop(server);
                 return SOCKET_ERROR_THREAD_CREATE_FAILED;
             }
+            
+            // Set smaller stack size (256KB instead of default 8MB)
+            size_t stack_size = 256 * 1024; // 256KB
+            if (pthread_attr_setstacksize(&thread_attr, stack_size) != 0) {
+                LOG_W("Failed to set stack size for socket worker thread %d, using default", i);
+            }
+            
+            if (pthread_create(&worker->thread, &thread_attr, worker_thread_func, worker) != 0) {
+                SET_ERROR(server, "Failed to create worker thread %d", i);
+                worker->running = false;
+                pthread_attr_destroy(&thread_attr);
+                UNLOCK_MUTEX(&server->server_mutex);
+                socket_server_stop(server);
+                return SOCKET_ERROR_THREAD_CREATE_FAILED;
+            }
+            
+            pthread_attr_destroy(&thread_attr);
         }
     }
     
-    // Start accept thread
+    // Start accept thread with optimized stack size
     server->running = true;
-    if (pthread_create(&server->accept_thread, NULL, accept_thread_func, server) != 0) {
+    
+    pthread_attr_t accept_attr;
+    if (pthread_attr_init(&accept_attr) == 0) {
+        // Accept thread needs minimal stack (128KB)
+        size_t accept_stack_size = 128 * 1024; // 128KB
+        if (pthread_attr_setstacksize(&accept_attr, accept_stack_size) != 0) {
+            LOG_W("Failed to set stack size for accept thread, using default");
+        }
+    }
+    
+    if (pthread_create(&server->accept_thread, &accept_attr, accept_thread_func, server) != 0) {
         SET_ERROR(server, "Failed to create accept thread");
         server->running = false;
+        pthread_attr_destroy(&accept_attr);
         UNLOCK_MUTEX(&server->server_mutex);
         socket_server_stop(server);
         return SOCKET_ERROR_THREAD_CREATE_FAILED;
     }
+    
+    pthread_attr_destroy(&accept_attr);
     
     UNLOCK_MUTEX(&server->server_mutex);
     

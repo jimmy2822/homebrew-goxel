@@ -37,76 +37,73 @@ scons daemon=1
 
 ### 4. Create Your First Voxel
 
-**Using TypeScript Client:**
+**Using JSON-RPC directly (Python example):**
 
-```bash
-# Install client
-cd src/mcp-client
-npm install
+```python
+import json
+import socket
 
-# Create example script
-cat > first_voxel.ts << 'EOF'
-import { GoxelClient } from './index';
+# Connect to daemon
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.connect('/tmp/goxel.sock')
 
-async function main() {
-  const client = new GoxelClient('/tmp/goxel.sock');
-  
-  // Create new project
-  await client.createProject({ 
-    name: 'my_first_voxel',
-    size: [32, 32, 32] 
-  });
-  
-  // Add a red cube
-  await client.addVoxels([
-    { x: 16, y: 16, z: 16, color: [255, 0, 0, 255] }
-  ]);
-  
-  // Save project
-  await client.saveProject({ path: 'first_voxel.gox' });
-  
-  // Export as OBJ
-  await client.export({ 
-    format: 'obj', 
-    path: 'first_voxel.obj' 
-  });
-  
-  console.log('Created first_voxel.gox and first_voxel.obj');
-}
+def call_rpc(method, params=None):
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": params or {}
+    }
+    sock.send(json.dumps(request).encode() + b'\n')
+    response = json.loads(sock.recv(4096).decode())
+    return response['result']
 
-main().catch(console.error);
-EOF
+# Create new project
+call_rpc('create_project', {'name': 'my_first_voxel'})
 
-# Run it
-npx ts-node first_voxel.ts
+# Add a red cube
+call_rpc('add_voxel', {
+    'x': 16, 'y': 16, 'z': 16,
+    'r': 255, 'g': 0, 'b': 0, 'a': 255
+})
+
+# Save project
+call_rpc('save_project', {'path': 'first_voxel.gox'})
+
+# Export as OBJ
+call_rpc('export_project', {
+    'format': 'obj',
+    'path': 'first_voxel.obj'
+})
+
+print('Created first_voxel.gox and first_voxel.obj')
+sock.close()
 ```
 
 ### 5. Quick Examples
 
 **Create a 3x3x3 Cube:**
-```typescript
-const positions = [];
-for (let x = 0; x < 3; x++) {
-  for (let y = 0; y < 3; y++) {
-    for (let z = 0; z < 3; z++) {
-      positions.push({ x, y, z, color: [255, 128, 0, 255] });
-    }
-  }
-}
-await client.addVoxels(positions);
+```python
+# Add multiple voxels to create a cube
+for x in range(3):
+    for y in range(3):
+        for z in range(3):
+            call_rpc('add_voxel', {
+                'x': x, 'y': y, 'z': z,
+                'r': 255, 'g': 128, 'b': 0, 'a': 255
+            })
 ```
 
 **Render Preview:**
-```typescript
-const image = await client.render({
-  width: 800,
-  height: 600,
-  camera: {
-    position: [30, 30, 30],
-    target: [16, 16, 16]
-  }
-});
-// Returns base64 PNG image
+```python
+# Render the scene
+result = call_rpc('render_image', {
+    'width': 800,
+    'height': 600,
+    'camera_position': [30, 30, 30],
+    'camera_target': [16, 16, 16]
+})
+# Returns base64 PNG image in result['image']
 ```
 
 ## GUI Alternative
