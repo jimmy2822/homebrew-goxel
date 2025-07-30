@@ -1,0 +1,4 @@
+[submodule "homebrew-goxel"]
+	path = homebrew-goxel
+	url = ./homebrew-goxel
+	branch = HEAD
