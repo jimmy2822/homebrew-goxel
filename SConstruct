@@ -133,6 +133,16 @@ if env['daemon']:
         for filename in filenames:
             if filename.endswith('.c') or filename.endswith('.cpp'):
                 daemon_sources.append(os.path.join(root, filename))
+    
+    # Explicitly add new daemon feature files to ensure they're included
+    daemon_feature_files = [
+        'src/daemon/bulk_voxel_ops.c',
+        'src/daemon/color_analysis.c'
+    ]
+    
+    for feature_file in daemon_feature_files:
+        if os.path.exists(feature_file) and feature_file not in daemon_sources:
+            daemon_sources.append(feature_file)
 
 # Include remaining src files (excluding core/, gui/, headless/ subdirs)
 other_sources = []

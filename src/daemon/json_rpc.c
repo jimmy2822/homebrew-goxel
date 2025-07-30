@@ -18,10 +18,15 @@
 
 #include "json_rpc.h"
 #include "test_methods.h"
-#include "../utils/json.h"
+#include "bulk_voxel_ops.h"
+#include "color_analysis.h"
+#include "worker_pool.h"
+#include "../core/utils/json.h"
 #include "../../ext_src/json/json-builder.h"
+#include "../../ext_src/json/json.h"
 #include "../log.h"
 #include "../core/goxel_core.h"
+#include "../script.h"
 #include <time.h>
 #include <unistd.h>
 
@@ -31,6 +36,8 @@
 #include <assert.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <errno.h>
 
 // ============================================================================
 // UTILITY MACROS
@@ -1164,6 +1171,17 @@ static json_rpc_response_t *handle_goxel_merge_layers(const json_rpc_request_t *
 static json_rpc_response_t *handle_goxel_set_layer_visibility(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_batch_operations(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t *request);
+
+// Bulk voxel reading handlers
+static json_rpc_response_t *handle_goxel_get_voxels_region(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_get_layer_voxels(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_get_bounding_box(const json_rpc_request_t *request);
+
+// Color analysis handlers
+static json_rpc_response_t *handle_goxel_get_color_histogram(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_find_voxels_by_color(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_get_unique_colors(const json_rpc_request_t *request);
 
 // Method registry
 static const method_registry_entry_t g_method_registry[] = {
@@ -1191,7 +1209,20 @@ static const method_registry_entry_t g_method_registry[] = {
     {"goxel.set_layer_visibility", handle_goxel_set_layer_visibility, "Show or hide layer"},
     
     // System operations
-    {"goxel.get_status", handle_goxel_get_status, "Get current Goxel status and info"}
+    {"goxel.get_status", handle_goxel_get_status, "Get current Goxel status and info"},
+    
+    // Script operations
+    {"goxel.execute_script", handle_goxel_execute_script, "Execute JavaScript code asynchronously"},
+    
+    // Bulk voxel reading operations
+    {"goxel.get_voxels_region", handle_goxel_get_voxels_region, "Get all voxels in a box region"},
+    {"goxel.get_layer_voxels", handle_goxel_get_layer_voxels, "Get all voxels in a layer"},
+    {"goxel.get_bounding_box", handle_goxel_get_bounding_box, "Get bounding box of voxels"},
+    
+    // Color analysis operations
+    {"goxel.get_color_histogram", handle_goxel_get_color_histogram, "Generate color distribution analysis"},
+    {"goxel.find_voxels_by_color", handle_goxel_find_voxels_by_color, "Find all voxels matching a color"},
+    {"goxel.get_unique_colors", handle_goxel_get_unique_colors, "List all unique colors used"}
 };
 
 static const size_t g_method_registry_size = sizeof(g_method_registry) / sizeof(g_method_registry[0]);
@@ -2035,6 +2066,722 @@ static json_rpc_response_t *handle_goxel_batch_operations(const json_rpc_request
     json_object_push(result_obj, "successful_operations", json_integer_new(successful_operations));
     
     return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+// ============================================================================
+// SCRIPT EXECUTION HANDLER
+// ============================================================================
+
+// Structure to pass script execution data to worker thread
+typedef struct {
+    char *script_code;
+    char *script_path;
+    char *source_name;
+    json_rpc_id_t request_id;
+    pthread_mutex_t *result_mutex;
+    pthread_cond_t *result_cond;
+    int result_code;
+    char *result_message;
+    bool completed;
+} script_execution_request_t;
+
+// Worker pool for script execution (initialized elsewhere)
+extern worker_pool_t *g_script_worker_pool;
+
+#if 0  // TODO: Enable when worker pool integration is complete
+// Process function for script execution in worker thread
+static int process_script_execution(void *request_data, int worker_id, void *context)
+{
+    script_execution_request_t *script_req = (script_execution_request_t *)request_data;
+    int result = -1;
+    
+    LOG_D("Worker %d executing script: %s", worker_id, 
+          script_req->source_name ? script_req->source_name : "<anonymous>");
+    
+    // Initialize script engine if needed (thread-safe initialization)
+    static pthread_once_t script_init_once = PTHREAD_ONCE_INIT;
+    pthread_once(&script_init_once, script_init);
+    
+    // Execute the script
+    if (script_req->script_code) {
+        // Execute from string
+        result = script_run_from_string(script_req->script_code, script_req->source_name);
+    } else if (script_req->script_path) {
+        // Execute from file
+        result = script_run_from_file(script_req->script_path, 0, NULL);
+    }
+    
+    // Store result
+    pthread_mutex_lock(script_req->result_mutex);
+    script_req->result_code = result;
+    if (result == 0) {
+        script_req->result_message = strdup("Script executed successfully");
+    } else {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Script execution failed with code %d", result);
+        script_req->result_message = strdup(error_msg);
+    }
+    script_req->completed = true;
+    pthread_cond_signal(script_req->result_cond);
+    pthread_mutex_unlock(script_req->result_mutex);
+    
+    return result;
+}
+#endif  // End of TODO: Enable when worker pool integration is complete
+
+// Cleanup function for script execution request  
+static void cleanup_script_execution(void *request_data)
+{
+    script_execution_request_t *script_req = (script_execution_request_t *)request_data;
+    if (script_req) {
+        SAFE_FREE(script_req->script_code);
+        SAFE_FREE(script_req->script_path);
+        SAFE_FREE(script_req->source_name);
+        SAFE_FREE(script_req->result_message);
+        // Note: Don't free mutex/cond here as they're managed by the handler
+        free(script_req);
+    }
+}
+
+static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Check if worker pool is available
+    if (!g_script_worker_pool || !worker_pool_is_running(g_script_worker_pool)) {
+        LOG_W("Script worker pool not available, executing synchronously");
+        
+        // Fallback to synchronous execution
+        json_value *script_val = NULL;
+        json_value *path_val = NULL;
+        json_value *name_val = NULL;
+        
+        json_rpc_get_param_by_name(&request->params, "script", &script_val);
+        json_rpc_get_param_by_name(&request->params, "path", &path_val);
+        json_rpc_get_param_by_name(&request->params, "name", &name_val);
+        
+        if (!script_val && !path_val) {
+            return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                                 "Must specify either 'script' (code) or 'path' parameter",
+                                                 NULL, &request->id);
+        }
+        
+        int result = -1;
+        const char *source_name = name_val ? name_val->u.string.ptr : "<inline>";
+        
+        if (script_val && script_val->type == json_string) {
+            result = script_run_from_string(script_val->u.string.ptr, source_name);
+        } else if (path_val && path_val->type == json_string) {
+            result = script_run_from_file(path_val->u.string.ptr, 0, NULL);
+        }
+        
+        json_value *result_obj = json_object_new(3);
+        json_object_push(result_obj, "success", json_boolean_new(result == 0));
+        json_object_push(result_obj, "code", json_integer_new(result));
+        json_object_push(result_obj, "message", 
+                        json_string_new(result == 0 ? "Script executed successfully" : "Script execution failed"));
+        
+        return json_rpc_create_response_result(result_obj, &request->id);
+    }
+    
+    // Asynchronous execution with worker pool
+    json_value *script_val = NULL;
+    json_value *path_val = NULL;
+    json_value *name_val = NULL;
+    json_value *timeout_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "script", &script_val);
+    json_rpc_get_param_by_name(&request->params, "path", &path_val);
+    json_rpc_get_param_by_name(&request->params, "name", &name_val);
+    json_rpc_get_param_by_name(&request->params, "timeout_ms", &timeout_val);
+    
+    if (!script_val && !path_val) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify either 'script' (code) or 'path' parameter",
+                                             NULL, &request->id);
+    }
+    
+    // Create script execution request
+    script_execution_request_t *script_req = calloc(1, sizeof(script_execution_request_t));
+    if (!script_req) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Out of memory",
+                                             NULL, &request->id);
+    }
+    
+    // Initialize synchronization primitives
+    pthread_mutex_t result_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t result_cond = PTHREAD_COND_INITIALIZER;
+    
+    script_req->result_mutex = &result_mutex;
+    script_req->result_cond = &result_cond;
+    script_req->request_id = request->id;
+    script_req->completed = false;
+    
+    // Set script parameters
+    if (script_val && script_val->type == json_string) {
+        script_req->script_code = strdup(script_val->u.string.ptr);
+    }
+    if (path_val && path_val->type == json_string) {
+        script_req->script_path = strdup(path_val->u.string.ptr);
+    }
+    if (name_val && name_val->type == json_string) {
+        script_req->source_name = strdup(name_val->u.string.ptr);
+    } else {
+        script_req->source_name = strdup(script_req->script_path ? script_req->script_path : "<inline>");
+    }
+    
+    // Submit to worker pool
+    worker_pool_error_t pool_result = worker_pool_submit_request(g_script_worker_pool, 
+                                                                script_req, 
+                                                                WORKER_PRIORITY_NORMAL);
+    
+    if (pool_result != WORKER_POOL_SUCCESS) {
+        cleanup_script_execution(script_req);
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Failed to submit script execution request",
+                                             NULL, &request->id);
+    }
+    
+    // Wait for completion with timeout
+    int timeout_ms = 30000; // Default 30 seconds
+    if (timeout_val && timeout_val->type == json_integer) {
+        timeout_ms = (int)timeout_val->u.integer;
+        if (timeout_ms <= 0 || timeout_ms > 300000) { // Max 5 minutes
+            timeout_ms = 30000;
+        }
+    }
+    
+    struct timespec timeout_spec;
+    clock_gettime(CLOCK_REALTIME, &timeout_spec);
+    timeout_spec.tv_sec += timeout_ms / 1000;
+    timeout_spec.tv_nsec += (timeout_ms % 1000) * 1000000L;
+    if (timeout_spec.tv_nsec >= 1000000000L) {
+        timeout_spec.tv_sec++;
+        timeout_spec.tv_nsec -= 1000000000L;
+    }
+    
+    pthread_mutex_lock(&result_mutex);
+    int wait_result = 0;
+    while (!script_req->completed && wait_result == 0) {
+        wait_result = pthread_cond_timedwait(&result_cond, &result_mutex, &timeout_spec);
+    }
+    
+    json_rpc_response_t *response;
+    if (wait_result == ETIMEDOUT) {
+        response = json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Script execution timeout",
+                                                 NULL, &request->id);
+    } else {
+        json_value *result_obj = json_object_new(3);
+        json_object_push(result_obj, "success", json_boolean_new(script_req->result_code == 0));
+        json_object_push(result_obj, "code", json_integer_new(script_req->result_code));
+        json_object_push(result_obj, "message", 
+                        json_string_new(script_req->result_message ? script_req->result_message : "Unknown result"));
+        response = json_rpc_create_response_result(result_obj, &request->id);
+    }
+    
+    pthread_mutex_unlock(&result_mutex);
+    
+    // Note: The worker thread will clean up the request data
+    // We just need to destroy the synchronization primitives
+    pthread_mutex_destroy(&result_mutex);
+    pthread_cond_destroy(&result_cond);
+    
+    return response;
+}
+
+// ============================================================================
+// BULK VOXEL READING HANDLERS
+// ============================================================================
+
+// External worker pool (initialized in daemon main)
+extern worker_pool_t *g_worker_pool;
+
+static json_rpc_response_t *handle_goxel_get_voxels_region(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parse parameters
+    json_value *min_val = NULL;
+    json_value *max_val = NULL;
+    json_value *layer_id_val = NULL;
+    json_value *color_filter_val = NULL;
+    json_value *offset_val = NULL;
+    json_value *limit_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "min", &min_val);
+    json_rpc_get_param_by_name(&request->params, "max", &max_val);
+    json_rpc_get_param_by_name(&request->params, "layer_id", &layer_id_val);
+    json_rpc_get_param_by_name(&request->params, "color_filter", &color_filter_val);
+    json_rpc_get_param_by_name(&request->params, "offset", &offset_val);
+    json_rpc_get_param_by_name(&request->params, "limit", &limit_val);
+    
+    // Validate required parameters
+    if (!min_val || min_val->type != json_array || min_val->u.array.length != 3) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Parameter 'min' must be an array of 3 integers",
+                                             NULL, &request->id);
+    }
+    
+    if (!max_val || max_val->type != json_array || max_val->u.array.length != 3) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Parameter 'max' must be an array of 3 integers",
+                                             NULL, &request->id);
+    }
+    
+    // Create bulk voxel context
+    bulk_voxel_context_t *ctx = calloc(1, sizeof(bulk_voxel_context_t));
+    if (!ctx) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Out of memory",
+                                             NULL, &request->id);
+    }
+    
+    // Extract min/max coordinates
+    for (int i = 0; i < 3; i++) {
+        json_value *min_elem = min_val->u.array.values[i];
+        json_value *max_elem = max_val->u.array.values[i];
+        
+        if (!min_elem || min_elem->type != json_integer ||
+            !max_elem || max_elem->type != json_integer) {
+            free(ctx);
+            return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                                 "Min/max arrays must contain integers",
+                                                 NULL, &request->id);
+        }
+        
+        ctx->min[i] = (int)min_elem->u.integer;
+        ctx->max[i] = (int)max_elem->u.integer;
+    }
+    
+    // Optional parameters
+    ctx->layer_id = layer_id_val ? (int)layer_id_val->u.integer : -1;
+    ctx->offset = offset_val ? (int)offset_val->u.integer : 0;
+    ctx->limit = limit_val ? (int)limit_val->u.integer : BULK_VOXELS_CHUNK_SIZE;
+    
+    // Parse color filter if provided
+    if (color_filter_val && color_filter_val->type == json_array && 
+        color_filter_val->u.array.length >= 3) {
+        ctx->use_color_filter = true;
+        for (int i = 0; i < 4; i++) {
+            if (i < color_filter_val->u.array.length) {
+                json_value *c = color_filter_val->u.array.values[i];
+                ctx->color_filter[i] = c ? (uint8_t)c->u.integer : 0;
+            } else {
+                ctx->color_filter[i] = (i == 3) ? 255 : 0; // Default alpha to 255
+            }
+        }
+    }
+    
+    ctx->goxel_ctx = g_goxel_context;
+    ctx->request = (json_rpc_request_t *)request; // Safe cast - we won't modify
+    
+    // Use worker pool if available for large operations
+    if (g_worker_pool && worker_pool_is_running(g_worker_pool)) {
+        int ret = bulk_voxel_worker(ctx, 0, NULL);
+        if (ret != 0 || !ctx->response) {
+            free(ctx);
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Bulk operation failed",
+                                                 NULL, &request->id);
+        }
+        
+        json_rpc_response_t *response = ctx->response;
+        free(ctx);
+        return response;
+    } else {
+        // Synchronous fallback
+        bulk_voxel_result_t result = {0};
+        int ret = bulk_get_voxels_region(g_goxel_context,
+                                         ctx->min, ctx->max,
+                                         ctx->layer_id,
+                                         ctx->use_color_filter ? ctx->color_filter : NULL,
+                                         ctx->offset, ctx->limit,
+                                         &result);
+        
+        if (ret != 0) {
+            bulk_voxel_result_free(&result);
+            free(ctx);
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Failed to get voxels",
+                                                 NULL, &request->id);
+        }
+        
+        json_value *json_result = bulk_voxel_result_to_json(&result, 
+                                                            BULK_COMPRESS_NONE,
+                                                            true);
+        bulk_voxel_result_free(&result);
+        free(ctx);
+        
+        if (!json_result) {
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Failed to convert result to JSON",
+                                                 NULL, &request->id);
+        }
+        
+        return json_rpc_create_response_result(json_result, &request->id);
+    }
+}
+
+static json_rpc_response_t *handle_goxel_get_layer_voxels(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parse parameters
+    json_value *layer_id_val = NULL;
+    json_value *color_filter_val = NULL;
+    json_value *offset_val = NULL;
+    json_value *limit_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "layer_id", &layer_id_val);
+    json_rpc_get_param_by_name(&request->params, "color_filter", &color_filter_val);
+    json_rpc_get_param_by_name(&request->params, "offset", &offset_val);
+    json_rpc_get_param_by_name(&request->params, "limit", &limit_val);
+    
+    // Create bulk voxel context
+    bulk_voxel_context_t *ctx = calloc(1, sizeof(bulk_voxel_context_t));
+    if (!ctx) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Out of memory",
+                                             NULL, &request->id);
+    }
+    
+    // Optional parameters
+    ctx->layer_id = layer_id_val ? (int)layer_id_val->u.integer : -1;
+    ctx->offset = offset_val ? (int)offset_val->u.integer : 0;
+    ctx->limit = limit_val ? (int)limit_val->u.integer : BULK_VOXELS_CHUNK_SIZE;
+    
+    // Parse color filter if provided
+    if (color_filter_val && color_filter_val->type == json_array && 
+        color_filter_val->u.array.length >= 3) {
+        ctx->use_color_filter = true;
+        for (int i = 0; i < 4; i++) {
+            if (i < color_filter_val->u.array.length) {
+                json_value *c = color_filter_val->u.array.values[i];
+                ctx->color_filter[i] = c ? (uint8_t)c->u.integer : 0;
+            } else {
+                ctx->color_filter[i] = (i == 3) ? 255 : 0; // Default alpha to 255
+            }
+        }
+    }
+    
+    ctx->goxel_ctx = g_goxel_context;
+    ctx->request = (json_rpc_request_t *)request;
+    
+    // Use worker pool if available
+    if (g_worker_pool && worker_pool_is_running(g_worker_pool)) {
+        int ret = bulk_voxel_worker(ctx, 0, NULL);
+        if (ret != 0 || !ctx->response) {
+            free(ctx);
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Bulk operation failed",
+                                                 NULL, &request->id);
+        }
+        
+        json_rpc_response_t *response = ctx->response;
+        free(ctx);
+        return response;
+    } else {
+        // Synchronous fallback
+        bulk_voxel_result_t result = {0};
+        int ret = bulk_get_layer_voxels(g_goxel_context,
+                                        ctx->layer_id,
+                                        ctx->use_color_filter ? ctx->color_filter : NULL,
+                                        ctx->offset, ctx->limit,
+                                        &result);
+        
+        if (ret != 0) {
+            bulk_voxel_result_free(&result);
+            free(ctx);
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Failed to get layer voxels",
+                                                 NULL, &request->id);
+        }
+        
+        json_value *json_result = bulk_voxel_result_to_json(&result, 
+                                                            BULK_COMPRESS_NONE,
+                                                            true);
+        bulk_voxel_result_free(&result);
+        free(ctx);
+        
+        if (!json_result) {
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Failed to convert result to JSON",
+                                                 NULL, &request->id);
+        }
+        
+        return json_rpc_create_response_result(json_result, &request->id);
+    }
+}
+
+static json_rpc_response_t *handle_goxel_get_bounding_box(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parse parameters
+    json_value *layer_id_val = NULL;
+    json_value *exact_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "layer_id", &layer_id_val);
+    json_rpc_get_param_by_name(&request->params, "exact", &exact_val);
+    
+    int layer_id = layer_id_val ? (int)layer_id_val->u.integer : -1;
+    bool exact = exact_val ? (exact_val->type == json_boolean && exact_val->u.boolean) : true;
+    
+    int bbox[2][3];
+    int ret = bulk_get_bounding_box(g_goxel_context, layer_id, exact, bbox);
+    
+    if (ret < 0) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Failed to get bounding box",
+                                             NULL, &request->id);
+    }
+    
+    json_value *result = bulk_bbox_to_json(bbox, ret == 1);
+    if (!result) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Failed to convert result to JSON",
+                                             NULL, &request->id);
+    }
+    
+    return json_rpc_create_response_result(result, &request->id);
+}
+
+// ============================================================================
+// COLOR ANALYSIS HANDLERS
+// ============================================================================
+
+static json_rpc_response_t *handle_goxel_get_color_histogram(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parse parameters
+    json_value *layer_id_val = NULL;
+    json_value *region_val = NULL;
+    json_value *bin_size_val = NULL;
+    json_value *sort_by_count_val = NULL;
+    json_value *top_n_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "layer_id", &layer_id_val);
+    json_rpc_get_param_by_name(&request->params, "region", &region_val);
+    json_rpc_get_param_by_name(&request->params, "bin_size", &bin_size_val);
+    json_rpc_get_param_by_name(&request->params, "sort_by_count", &sort_by_count_val);
+    json_rpc_get_param_by_name(&request->params, "top_n", &top_n_val);
+    
+    // Create color analysis context
+    color_analysis_context_t *ctx = calloc(1, sizeof(color_analysis_context_t));
+    if (!ctx) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Out of memory",
+                                             NULL, &request->id);
+    }
+    
+    ctx->goxel_ctx = g_goxel_context;
+    ctx->request = (json_rpc_request_t *)request;
+    ctx->analysis_type = COLOR_ANALYSIS_HISTOGRAM;
+    ctx->layer_id = layer_id_val ? (int)layer_id_val->u.integer : -1;
+    ctx->bin_size = bin_size_val ? (int)bin_size_val->u.integer : 0;
+    ctx->sort_by_count = sort_by_count_val ? sort_by_count_val->u.boolean : true;
+    ctx->top_n = top_n_val ? (int)top_n_val->u.integer : 0;
+    
+    // Parse region if provided
+    if (region_val && region_val->type == json_object) {
+        json_value *min_val = json_object_get_helper(region_val, "min");
+        json_value *max_val = json_object_get_helper(region_val, "max");
+        
+        if (min_val && min_val->type == json_array && min_val->u.array.length >= 3 &&
+            max_val && max_val->type == json_array && max_val->u.array.length >= 3) {
+            ctx->use_region = true;
+            for (int i = 0; i < 3; i++) {
+                ctx->region_min[i] = (int)min_val->u.array.values[i]->u.integer;
+                ctx->region_max[i] = (int)max_val->u.array.values[i]->u.integer;
+            }
+        }
+    }
+    
+    // Execute analysis in worker thread
+    color_analysis_worker(ctx, 0, NULL);
+    
+    json_rpc_response_t *response = ctx->response;
+    color_analysis_cleanup(ctx);
+    
+    return response;
+}
+
+static json_rpc_response_t *handle_goxel_find_voxels_by_color(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parse parameters
+    json_value *color_val = NULL;
+    json_value *tolerance_val = NULL;
+    json_value *layer_id_val = NULL;
+    json_value *region_val = NULL;
+    json_value *max_results_val = NULL;
+    json_value *include_locations_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "color", &color_val);
+    json_rpc_get_param_by_name(&request->params, "tolerance", &tolerance_val);
+    json_rpc_get_param_by_name(&request->params, "layer_id", &layer_id_val);
+    json_rpc_get_param_by_name(&request->params, "region", &region_val);
+    json_rpc_get_param_by_name(&request->params, "max_results", &max_results_val);
+    json_rpc_get_param_by_name(&request->params, "include_locations", &include_locations_val);
+    
+    // Validate required color parameter
+    if (!color_val || color_val->type != json_array || color_val->u.array.length < 3) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Color parameter must be an array of [r,g,b] or [r,g,b,a]",
+                                             NULL, &request->id);
+    }
+    
+    // Create color analysis context
+    color_analysis_context_t *ctx = calloc(1, sizeof(color_analysis_context_t));
+    if (!ctx) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Out of memory",
+                                             NULL, &request->id);
+    }
+    
+    ctx->goxel_ctx = g_goxel_context;
+    ctx->request = (json_rpc_request_t *)request;
+    ctx->analysis_type = COLOR_ANALYSIS_FIND_BY_COLOR;
+    ctx->layer_id = layer_id_val ? (int)layer_id_val->u.integer : -1;
+    ctx->max_results = max_results_val ? (int)max_results_val->u.integer : 1000;
+    ctx->include_locations = include_locations_val ? include_locations_val->u.boolean : true;
+    
+    // Parse color
+    for (int i = 0; i < 3; i++) {
+        ctx->target_color[i] = (uint8_t)color_val->u.array.values[i]->u.integer;
+    }
+    ctx->target_color[3] = (color_val->u.array.length >= 4) ? 
+        (uint8_t)color_val->u.array.values[3]->u.integer : 255;
+    
+    // Parse tolerance if provided
+    if (tolerance_val) {
+        if (tolerance_val->type == json_integer) {
+            // Single value for all channels
+            uint8_t tol = (uint8_t)tolerance_val->u.integer;
+            for (int i = 0; i < 4; i++) {
+                ctx->tolerance[i] = tol;
+            }
+        } else if (tolerance_val->type == json_array && tolerance_val->u.array.length >= 3) {
+            // Per-channel tolerance
+            for (int i = 0; i < 3; i++) {
+                ctx->tolerance[i] = (uint8_t)tolerance_val->u.array.values[i]->u.integer;
+            }
+            ctx->tolerance[3] = (tolerance_val->u.array.length >= 4) ?
+                (uint8_t)tolerance_val->u.array.values[3]->u.integer : 0;
+        }
+    }
+    
+    // Parse region if provided
+    if (region_val && region_val->type == json_object) {
+        json_value *min_val = json_object_get_helper(region_val, "min");
+        json_value *max_val = json_object_get_helper(region_val, "max");
+        
+        if (min_val && min_val->type == json_array && min_val->u.array.length >= 3 &&
+            max_val && max_val->type == json_array && max_val->u.array.length >= 3) {
+            ctx->use_region = true;
+            for (int i = 0; i < 3; i++) {
+                ctx->region_min[i] = (int)min_val->u.array.values[i]->u.integer;
+                ctx->region_max[i] = (int)max_val->u.array.values[i]->u.integer;
+            }
+        }
+    }
+    
+    // Execute analysis in worker thread
+    color_analysis_worker(ctx, 0, NULL);
+    
+    json_rpc_response_t *response = ctx->response;
+    color_analysis_cleanup(ctx);
+    
+    return response;
+}
+
+static json_rpc_response_t *handle_goxel_get_unique_colors(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parse parameters
+    json_value *layer_id_val = NULL;
+    json_value *region_val = NULL;
+    json_value *merge_similar_val = NULL;
+    json_value *merge_threshold_val = NULL;
+    json_value *sort_by_count_val = NULL;
+    
+    json_rpc_get_param_by_name(&request->params, "layer_id", &layer_id_val);
+    json_rpc_get_param_by_name(&request->params, "region", &region_val);
+    json_rpc_get_param_by_name(&request->params, "merge_similar", &merge_similar_val);
+    json_rpc_get_param_by_name(&request->params, "merge_threshold", &merge_threshold_val);
+    json_rpc_get_param_by_name(&request->params, "sort_by_count", &sort_by_count_val);
+    
+    // Create color analysis context
+    color_analysis_context_t *ctx = calloc(1, sizeof(color_analysis_context_t));
+    if (!ctx) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Out of memory",
+                                             NULL, &request->id);
+    }
+    
+    ctx->goxel_ctx = g_goxel_context;
+    ctx->request = (json_rpc_request_t *)request;
+    ctx->analysis_type = COLOR_ANALYSIS_UNIQUE_COLORS;
+    ctx->layer_id = layer_id_val ? (int)layer_id_val->u.integer : -1;
+    ctx->merge_similar = merge_similar_val ? merge_similar_val->u.boolean : false;
+    ctx->merge_threshold = merge_threshold_val ? (int)merge_threshold_val->u.integer : 10;
+    ctx->sort_by_count = sort_by_count_val ? sort_by_count_val->u.boolean : false;
+    
+    // Parse region if provided
+    if (region_val && region_val->type == json_object) {
+        json_value *min_val = json_object_get_helper(region_val, "min");
+        json_value *max_val = json_object_get_helper(region_val, "max");
+        
+        if (min_val && min_val->type == json_array && min_val->u.array.length >= 3 &&
+            max_val && max_val->type == json_array && max_val->u.array.length >= 3) {
+            ctx->use_region = true;
+            for (int i = 0; i < 3; i++) {
+                ctx->region_min[i] = (int)min_val->u.array.values[i]->u.integer;
+                ctx->region_max[i] = (int)max_val->u.array.values[i]->u.integer;
+            }
+        }
+    }
+    
+    // Execute analysis in worker thread
+    color_analysis_worker(ctx, 0, NULL);
+    
+    json_rpc_response_t *response = ctx->response;
+    color_analysis_cleanup(ctx);
+    
+    return response;
 }
 
 // ============================================================================

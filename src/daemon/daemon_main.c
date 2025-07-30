@@ -149,6 +149,10 @@ typedef struct {
     uint64_t detection_errors;
 } protocol_stats_t;
 
+// Global worker pools for async execution
+worker_pool_t *g_script_worker_pool = NULL;
+worker_pool_t *g_worker_pool = NULL;  // Main worker pool for bulk operations
+
 /**
  * Concurrent daemon context structure with dual-mode support.
  */
@@ -156,6 +160,7 @@ typedef struct {
     // Core components
     socket_server_t *socket_server;
     worker_pool_t *worker_pool;
+    worker_pool_t *script_worker_pool;  // Separate pool for script execution
     request_queue_t *request_queue;
     
     // Goxel core instances (one per worker for thread safety)
@@ -1077,6 +1082,14 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
 }
 
 /**
+ * Dummy process function until script execution is fully integrated
+ */
+static int dummy_process_script(void *request_data, int worker_id, void *context) {
+    (void)request_data; (void)worker_id; (void)context;
+    return 0;
+}
+
+/**
  * Create and initialize concurrent daemon.
  */
 static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *config)
@@ -1183,6 +1196,55 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         return NULL;
     }
     
+    
+    // Create script worker pool with separate configuration
+    // TODO: Enable when worker pool integration is complete
+#if 0
+    // Forward declare the process function from json_rpc.c
+    extern int process_script_execution(void *request_data, int worker_id, void *context);
+    extern void cleanup_script_execution(void *request_data);
+    
+    worker_pool_config_t script_pool_config = worker_pool_default_config();
+    script_pool_config.worker_count = 4;  // Fewer workers for script execution
+    script_pool_config.queue_capacity = 100;  // Smaller queue for scripts
+    script_pool_config.enable_priority_queue = true;
+    script_pool_config.process_func = process_script_execution;
+    script_pool_config.cleanup_func = cleanup_script_execution;
+    script_pool_config.context = daemon;
+    
+    daemon->script_worker_pool = worker_pool_create(&script_pool_config);
+    if (!daemon->script_worker_pool) {
+        worker_pool_destroy(daemon->worker_pool);
+        socket_server_destroy(daemon->socket_server);
+        for (int i = 0; i < daemon->num_contexts; i++) {
+            // goxel_core_destroy_context(daemon->goxel_contexts[i]);
+        }
+        free(daemon->goxel_contexts);
+        pthread_mutex_destroy(&daemon->state_mutex);
+        pthread_mutex_destroy(&daemon->protocol_mutex);
+        free(daemon);
+        return NULL;
+    }
+#else
+    // Use dummy worker pool for now
+    worker_pool_config_t script_pool_config = worker_pool_default_config();
+    script_pool_config.worker_count = 2;  // Minimal workers
+    script_pool_config.queue_capacity = 50;
+    script_pool_config.process_func = dummy_process_script;
+    script_pool_config.cleanup_func = NULL;
+    script_pool_config.context = daemon;
+    
+    daemon->script_worker_pool = worker_pool_create(&script_pool_config);
+    if (!daemon->script_worker_pool) {
+        LOG_W("Failed to create script worker pool, will use synchronous execution");
+        daemon->script_worker_pool = NULL;
+    }
+#endif
+    
+    // Set global pointers for access from json_rpc.c
+    g_script_worker_pool = daemon->script_worker_pool;
+    g_worker_pool = daemon->worker_pool;
+    
     // Create request queue
     request_queue_config_t queue_config = request_queue_default_config();
     queue_config.max_size = config->queue_size;
@@ -1191,6 +1253,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     daemon->request_queue = request_queue_create(&queue_config);
     if (!daemon->request_queue) {
         worker_pool_destroy(daemon->worker_pool);
+        worker_pool_destroy(daemon->script_worker_pool);
         socket_server_destroy(daemon->socket_server);
         for (int i = 0; i < daemon->num_contexts; i++) {
             // goxel_core_destroy_context(daemon->goxel_contexts[i]);
@@ -1217,6 +1280,16 @@ static void destroy_concurrent_daemon(concurrent_daemon_t *daemon)
     if (daemon->worker_pool) {
         worker_pool_stop(daemon->worker_pool);
         worker_pool_destroy(daemon->worker_pool);
+    }
+    
+    if (daemon->script_worker_pool) {
+        worker_pool_stop(daemon->script_worker_pool);
+        worker_pool_destroy(daemon->script_worker_pool);
+        g_script_worker_pool = NULL;  // Clear global pointer
+    }
+    
+    if (daemon->worker_pool) {
+        g_worker_pool = NULL;  // Clear global pointer
     }
     
     if (daemon->socket_server) {
@@ -1281,6 +1354,15 @@ static int run_daemon(const program_config_t *prog_config)
         return 1;
     }
     
+    // Start script worker pool
+    pool_result = worker_pool_start(daemon->script_worker_pool);
+    if (pool_result != WORKER_POOL_SUCCESS) {
+        fprintf(stderr, "Failed to start script worker pool: %s\n", 
+                worker_pool_error_string(pool_result));
+        destroy_concurrent_daemon(daemon);
+        return 1;
+    }
+    
     // Start socket server
     socket_error_t server_result = socket_server_start(daemon->socket_server);
     if (server_result != SOCKET_SUCCESS) {
@@ -1316,7 +1398,8 @@ static int run_daemon(const program_config_t *prog_config)
         
         // Check if we should continue running
         if (!socket_server_is_running(daemon->socket_server) ||
-            !worker_pool_is_running(daemon->worker_pool)) {
+            !worker_pool_is_running(daemon->worker_pool) ||
+            !worker_pool_is_running(daemon->script_worker_pool)) {
             break;
         }
     }
