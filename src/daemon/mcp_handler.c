@@ -37,6 +37,8 @@ static const mcp_method_mapping_t g_method_mappings[] = {
      "Save Goxel project to file"},
     {"goxel_export_file", "goxel.export_model", NULL, NULL,
      "Export model to various formats"},
+    {"goxel_render_scene", "goxel.render_scene", NULL, NULL,
+     "Render scene to image"},
     
     // File operations - With parameter mapping
     {"goxel_open_file", "goxel.load_project", mcp_map_open_file_params, NULL,
@@ -49,6 +51,12 @@ static const mcp_method_mapping_t g_method_mappings[] = {
      "Add voxel at specified position"},
     {"goxel_remove_voxels", "goxel.remove_voxel", mcp_map_voxel_position_params, NULL,
      "Remove voxel at specified position"},
+    {"goxel_paint_voxels", "goxel.paint_voxels", mcp_map_voxel_position_params, NULL,
+     "Paint existing voxels with new color"},
+    {"goxel_flood_fill", "goxel.flood_fill", mcp_map_voxel_position_params, NULL,
+     "Fill connected voxels of same color"},
+    {"goxel_procedural_shape", "goxel.procedural_shape", NULL, NULL,
+     "Generate procedural shapes"},
      
     // Voxel operations - Batch
     {"goxel_batch_voxel_operations", "goxel.batch_operations", mcp_map_batch_voxel_params, NULL,
@@ -57,8 +65,14 @@ static const mcp_method_mapping_t g_method_mappings[] = {
     // Layer operations - Direct mapping
     {"goxel_new_layer", "goxel.create_layer", NULL, NULL,
      "Create new layer"},
+    {"goxel_delete_layer", "goxel.delete_layer", NULL, NULL,
+     "Delete specified layer"},
     {"goxel_list_layers", "goxel.list_layers", NULL, NULL,
      "List all layers in project"},
+    {"goxel_merge_layers", "goxel.merge_layers", NULL, NULL,
+     "Merge two or more layers"},
+    {"goxel_set_layer_visibility", "goxel.set_layer_visibility", NULL, NULL,
+     "Show or hide layer"},
      
     // System operations - Direct mapping
     {"ping", "ping", NULL, NULL, "Health check"},

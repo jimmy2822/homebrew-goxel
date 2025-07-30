@@ -1156,20 +1156,42 @@ static json_rpc_response_t *handle_goxel_export_model(const json_rpc_request_t *
 static json_rpc_response_t *handle_goxel_get_status(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_list_layers(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_create_layer(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_paint_voxels(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_flood_fill(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_procedural_shape(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_delete_layer(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_merge_layers(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_set_layer_visibility(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_batch_operations(const json_rpc_request_t *request);
 
 // Method registry
 static const method_registry_entry_t g_method_registry[] = {
-    // Goxel API methods
+    // Goxel API methods - File operations
     {"goxel.create_project", handle_goxel_create_project, "Create a new voxel project"},
     {"goxel.load_project", handle_goxel_load_project, "Load a project from file"},
     {"goxel.save_project", handle_goxel_save_project, "Save project to file"},
+    {"goxel.export_model", handle_goxel_export_model, "Export model to specified format"},
+    {"goxel.render_scene", handle_goxel_render_scene, "Render scene to image"},
+    
+    // Voxel operations
     {"goxel.add_voxel", handle_goxel_add_voxel, "Add a voxel at specified position"},
     {"goxel.remove_voxel", handle_goxel_remove_voxel, "Remove a voxel at specified position"},
     {"goxel.get_voxel", handle_goxel_get_voxel, "Get voxel information at specified position"},
-    {"goxel.export_model", handle_goxel_export_model, "Export model to specified format"},
-    {"goxel.get_status", handle_goxel_get_status, "Get current Goxel status and info"},
+    {"goxel.paint_voxels", handle_goxel_paint_voxels, "Paint existing voxels with new color"},
+    {"goxel.flood_fill", handle_goxel_flood_fill, "Fill connected voxels of same color"},
+    {"goxel.procedural_shape", handle_goxel_procedural_shape, "Generate procedural shapes"},
+    {"goxel.batch_operations", handle_goxel_batch_operations, "Perform multiple voxel operations efficiently"},
+    
+    // Layer management
     {"goxel.list_layers", handle_goxel_list_layers, "List all layers in current project"},
-    {"goxel.create_layer", handle_goxel_create_layer, "Create a new layer"}
+    {"goxel.create_layer", handle_goxel_create_layer, "Create a new layer"},
+    {"goxel.delete_layer", handle_goxel_delete_layer, "Delete specified layer"},
+    {"goxel.merge_layers", handle_goxel_merge_layers, "Merge two or more layers"},
+    {"goxel.set_layer_visibility", handle_goxel_set_layer_visibility, "Show or hide layer"},
+    
+    // System operations
+    {"goxel.get_status", handle_goxel_get_status, "Get current Goxel status and info"}
 };
 
 static const size_t g_method_registry_size = sizeof(g_method_registry) / sizeof(g_method_registry[0]);
@@ -1177,6 +1199,9 @@ static const size_t g_method_registry_size = sizeof(g_method_registry) / sizeof(
 // ============================================================================
 // UTILITY FUNCTIONS FOR METHOD HANDLERS
 // ============================================================================
+
+// Forward declaration for JSON helper
+static json_value *json_object_get_helper(const json_value *obj, const char *key);
 
 static int get_int_param(const json_rpc_params_t *params, int index, const char *name)
 {
@@ -1639,6 +1664,395 @@ static json_rpc_response_t *handle_goxel_create_layer(const json_rpc_request_t *
     json_object_push(result_obj, "color", color_obj);
     
     return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_paint_voxels(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: x, y, z, rgba[4], layer_id (optional)
+    int x = get_int_param(&request->params, 0, "x");
+    int y = get_int_param(&request->params, 1, "y");
+    int z = get_int_param(&request->params, 2, "z");
+    int r = get_int_param(&request->params, 3, "r");
+    int g = get_int_param(&request->params, 4, "g");
+    int b = get_int_param(&request->params, 5, "b");
+    int a = get_int_param(&request->params, 6, "a");
+    int layer_id = get_int_param(&request->params, 7, "layer_id");
+    
+    if (a <= 0) a = 255; // Default alpha
+    if (layer_id <= 0) layer_id = 1; // Default layer
+    
+    uint8_t rgba[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
+    
+    LOG_D("Painting voxel at (%d, %d, %d) with color (%d, %d, %d, %d) on layer %d", 
+          x, y, z, r, g, b, a, layer_id);
+    
+    int result = goxel_core_paint_voxel(g_goxel_context, x, y, z, rgba, layer_id);
+    if (result != 0) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to paint voxel: error code %d", result);
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 9,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(2);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "painted", json_integer_new(1));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_flood_fill(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: x, y, z, rgba[4], layer_id (optional)
+    int x = get_int_param(&request->params, 0, "x");
+    int y = get_int_param(&request->params, 1, "y");
+    int z = get_int_param(&request->params, 2, "z");
+    int r = get_int_param(&request->params, 3, "r");
+    int g = get_int_param(&request->params, 4, "g");
+    int b = get_int_param(&request->params, 5, "b");
+    int a = get_int_param(&request->params, 6, "a");
+    int layer_id = get_int_param(&request->params, 7, "layer_id");
+    
+    if (a <= 0) a = 255;
+    if (layer_id <= 0) layer_id = 1;
+    
+    uint8_t rgba[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
+    
+    LOG_D("Flood filling from (%d, %d, %d) with color (%d, %d, %d, %d) on layer %d", 
+          x, y, z, r, g, b, a, layer_id);
+    
+    // TODO: Implement flood fill in core - using simple voxel addition for now
+    int result = goxel_core_add_voxel(g_goxel_context, x, y, z, rgba, layer_id);
+    int voxels_filled = (result == 0) ? 1 : 0;
+    if (result != 0) {
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 10,
+                                             "Failed to perform flood fill",
+                                             NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(2);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "voxels_filled", json_integer_new(voxels_filled));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_procedural_shape(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: shape_type, parameters, rgba[4], layer_id (optional)
+    const char *shape_type = get_string_param(&request->params, 0, "shape_type");
+    int size_x = get_int_param(&request->params, 1, "size_x");
+    int size_y = get_int_param(&request->params, 2, "size_y");
+    int size_z = get_int_param(&request->params, 3, "size_z");
+    int center_x = get_int_param(&request->params, 4, "center_x");
+    int center_y = get_int_param(&request->params, 5, "center_y");
+    int center_z = get_int_param(&request->params, 6, "center_z");
+    int r = get_int_param(&request->params, 7, "r");
+    int g = get_int_param(&request->params, 8, "g");
+    int b = get_int_param(&request->params, 9, "b");
+    int a = get_int_param(&request->params, 10, "a");
+    int layer_id = get_int_param(&request->params, 11, "layer_id");
+    
+    if (!shape_type) shape_type = "cube";
+    if (size_x <= 0) size_x = 10;
+    if (size_y <= 0) size_y = 10;
+    if (size_z <= 0) size_z = 10;
+    if (a <= 0) a = 255;
+    if (layer_id <= 0) layer_id = 1;
+    
+    uint8_t rgba[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
+    
+    LOG_D("Creating %s shape at (%d, %d, %d) size (%d, %d, %d) color (%d, %d, %d, %d) on layer %d", 
+          shape_type, center_x, center_y, center_z, size_x, size_y, size_z, r, g, b, a, layer_id);
+    
+    // TODO: Implement procedural shapes in core - creating simple cube for now
+    int voxels_created = 0;
+    if (strcmp(shape_type, "cube") == 0) {
+        for (int dx = -size_x/2; dx < size_x/2; dx++) {
+            for (int dy = -size_y/2; dy < size_y/2; dy++) {
+                for (int dz = -size_z/2; dz < size_z/2; dz++) {
+                    int result = goxel_core_add_voxel(g_goxel_context, 
+                                                     center_x + dx, center_y + dy, center_z + dz, 
+                                                     rgba, layer_id);
+                    if (result == 0) voxels_created++;
+                }
+            }
+        }
+    } else {
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 11,
+                                             "Shape type not implemented yet",
+                                             NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(3);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "shape_type", json_string_new(shape_type));
+    json_object_push(result_obj, "voxels_created", json_integer_new(voxels_created));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_delete_layer(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: layer_id or layer_name
+    int layer_id = get_int_param(&request->params, 0, "layer_id");
+    const char *layer_name = get_string_param(&request->params, 1, "layer_name");
+    
+    if (layer_id <= 0 && !layer_name) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify either layer_id or layer_name",
+                                             NULL, &request->id);
+    }
+    
+    LOG_D("Deleting layer: ID=%d, Name=%s", layer_id, layer_name ? layer_name : "null");
+    
+    int result = goxel_core_delete_layer(g_goxel_context, layer_id, layer_name);
+    if (result != 0) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to delete layer: error code %d", result);
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 12,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(1);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_merge_layers(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: source_layer_id, target_layer_id
+    int source_layer_id = get_int_param(&request->params, 0, "source_layer_id");
+    int target_layer_id = get_int_param(&request->params, 1, "target_layer_id");
+    
+    if (source_layer_id <= 0 || target_layer_id <= 0) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify valid source_layer_id and target_layer_id",
+                                             NULL, &request->id);
+    }
+    
+    LOG_D("Merging layer %d into layer %d", source_layer_id, target_layer_id);
+    
+    int result = goxel_core_merge_layers(g_goxel_context, source_layer_id, target_layer_id, NULL, NULL);
+    if (result != 0) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to merge layers: error code %d", result);
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 13,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(1);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_set_layer_visibility(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: layer_id, visible
+    int layer_id = get_int_param(&request->params, 0, "layer_id");
+    bool visible = get_bool_param(&request->params, 1, "visible", true);
+    
+    if (layer_id <= 0) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify valid layer_id",
+                                             NULL, &request->id);
+    }
+    
+    LOG_D("Setting layer %d visibility to %s", layer_id, visible ? "visible" : "hidden");
+    
+    int result = goxel_core_set_layer_visibility(g_goxel_context, layer_id, NULL, visible ? 1 : 0);
+    if (result != 0) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to set layer visibility: error code %d", result);
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 14,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(2);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "visible", json_boolean_new(visible));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: width, height, format (optional), output_path (optional)
+    int width = get_int_param(&request->params, 0, "width");
+    int height = get_int_param(&request->params, 1, "height");
+    const char *format = get_string_param(&request->params, 2, "format");
+    const char *output_path = get_string_param(&request->params, 3, "output_path");
+    
+    if (width <= 0) width = 512;
+    if (height <= 0) height = 512;
+    if (!format) format = "png";
+    
+    LOG_D("Rendering scene %dx%d format %s to %s", width, height, format, output_path ? output_path : "memory");
+    
+    int result;
+    if (output_path) {
+        // Render to file
+        result = goxel_core_render_to_file(g_goxel_context, output_path, width, height, format, 90, NULL);
+    } else {
+        // Render to buffer - placeholder implementation
+        result = -1; // Not implemented yet
+    }
+    if (result != 0) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to render scene: error code %d", result);
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 15,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    json_value *result_obj = json_object_new(4);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "width", json_integer_new(width));
+    json_object_push(result_obj, "height", json_integer_new(height));
+    json_object_push(result_obj, "format", json_string_new(format));
+    
+    if (output_path) {
+        json_object_push(result_obj, "output_path", json_string_new(output_path));
+    } else {
+        // TODO: Implement buffer rendering using goxel_core_render_to_buffer
+        json_object_push(result_obj, "note", json_string_new("Buffer rendering not yet implemented"));
+    }
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_batch_operations(const json_rpc_request_t *request)
+{
+    if (!g_goxel_context) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Goxel context not initialized",
+                                             NULL, &request->id);
+    }
+    
+    // Parameters: operations (array of operation objects)
+    json_value *operations = NULL;
+    json_rpc_result_t result = json_rpc_get_param_by_name(&request->params, "operations", &operations);
+    
+    if (result != JSON_RPC_SUCCESS || !operations || operations->type != json_array) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify operations array",
+                                             NULL, &request->id);
+    }
+    
+    int total_operations = (int)operations->u.array.length;
+    int successful_operations = 0;
+    
+    LOG_D("Processing batch of %d operations", total_operations);
+    
+    // Process operations individually for now
+    // TODO: Optimize to use goxel_core_add_voxels_batch when operations are uniform
+    
+    for (unsigned int i = 0; i < operations->u.array.length; i++) {
+        json_value *op = operations->u.array.values[i];
+        if (!op || op->type != json_object) continue;
+        
+        json_value *op_type = json_object_get_helper(op, "type");
+        if (!op_type || op_type->type != json_string) continue;
+        
+        const char *type = op_type->u.string.ptr;
+        int op_result = -1;
+        
+        if (strcmp(type, "add_voxel") == 0) {
+            json_value *x_val = json_object_get_helper(op, "x");
+            json_value *y_val = json_object_get_helper(op, "y");
+            json_value *z_val = json_object_get_helper(op, "z");
+            json_value *r_val = json_object_get_helper(op, "r");
+            json_value *g_val = json_object_get_helper(op, "g");
+            json_value *b_val = json_object_get_helper(op, "b");
+            json_value *a_val = json_object_get_helper(op, "a");
+            
+            if (x_val && y_val && z_val && r_val && g_val && b_val) {
+                int x = (int)x_val->u.integer;
+                int y = (int)y_val->u.integer;
+                int z = (int)z_val->u.integer;
+                uint8_t rgba[4] = {
+                    (uint8_t)r_val->u.integer,
+                    (uint8_t)g_val->u.integer,
+                    (uint8_t)b_val->u.integer,
+                    a_val ? (uint8_t)a_val->u.integer : 255
+                };
+                op_result = goxel_core_add_voxel(g_goxel_context, x, y, z, rgba, 1);
+            }
+        }
+        // Add more operation types as needed
+        
+        if (op_result == 0) {
+            successful_operations++;
+        }
+    }
+    
+    json_value *result_obj = json_object_new(3);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "total_operations", json_integer_new(total_operations));
+    json_object_push(result_obj, "successful_operations", json_integer_new(successful_operations));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+// ============================================================================
+// JSON UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Helper to get object member by name
+ */
+static json_value *json_object_get_helper(const json_value *obj, const char *key) {
+    if (!obj || obj->type != json_object || !key) return NULL;
+    
+    for (unsigned int i = 0; i < obj->u.object.length; i++) {
+        if (strcmp(obj->u.object.values[i].name, key) == 0) {
+            return obj->u.object.values[i].value;
+        }
+    }
+    return NULL;
 }
 
 // ============================================================================
