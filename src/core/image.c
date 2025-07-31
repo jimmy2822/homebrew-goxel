@@ -157,9 +157,8 @@ image_t *image_new(void)
     image_add_layer(img, NULL);
     // image_add_layer already sets visible, id, material, appends to list and sets as active
     
-    // Set ambient light to 1.0 for new projects to prevent dark voxel display
-    extern goxel_t goxel;
-    goxel.rend.settings.ambient = 1.0f;
+    // Note: Ambient light setting should be handled by the caller if needed
+    // to avoid global state dependencies in core image creation
     
     // Prevent saving an empty image.
     img->saved_key = image_get_key(img);

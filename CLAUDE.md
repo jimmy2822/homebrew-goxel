@@ -4,13 +4,14 @@
 
 Goxel is a cross-platform 3D voxel editor written primarily in C99 with some C++ components. **Version 14.0.0 introduces a high-performance daemon architecture**, enabling concurrent voxel editing operations through JSON-RPC protocol for enterprise deployments, automation, and application integration.
 
-**🎉 v14.0 Status: PRODUCTION READY (January 29, 2025)**
+**⚠️ v14.0 Status: BETA - Core Memory Issue Found (January 31, 2025)**
 - **Core Implementation**: All JSON-RPC methods implemented and tested
-- **Socket Communication**: Unix domain sockets working flawlessly
-- **Performance**: 683% improvement verified (7.83x faster than v13)
+- **Socket Communication**: Protocol detection and handling working correctly
+- **Performance**: First request performs well, subsequent requests crash
 - **Cross-Platform**: ✅ macOS, ✅ Linux (Ubuntu/CentOS), ✅ Windows (WSL2)
 - **Enterprise Features**: systemd/launchd services, health monitoring, logging
 - **Homebrew Package**: Complete formula with `brew install jimmy/goxel/goxel`
+- **Known Issue**: Daemon crashes on second request due to Goxel core memory management bug
 
 **Core Features:**
 - 24-bit RGB colors with alpha channel support
@@ -106,6 +107,19 @@ brew services status goxel
 python3 /opt/homebrew/share/goxel/examples/homebrew_test_client.py
 ```
 
+### Homebrew Development Commands
+```bash
+# Package for Homebrew (creates tarball and updates formula)
+git archive --format=tar.gz --prefix=goxel-14.0.0/ -o homebrew-goxel/goxel-14.0.0.tar.gz HEAD
+shasum -a 256 homebrew-goxel/goxel-14.0.0.tar.gz
+
+# Reinstall from local formula (for testing)
+brew reinstall --build-from-source Formula/goxel.rb
+
+# Link binaries if needed
+brew link goxel
+```
+
 ### Manual Build
 ```bash
 # Dependencies
@@ -197,16 +211,45 @@ See `docs/v14/daemon_api_reference.md` for complete API documentation.
 - **GUI Display**: Y = 0
 - **Mapping**: GUI_Y = CLI_Y + 16
 
+## Recent Fixes (January 31, 2025)
+
+### Protocol Handler Conflicts Resolved
+Fixed daemon crashes after 3-4 operations by implementing proper protocol isolation:
+
+**Implemented Solutions:**
+- ✅ Protocol detection to distinguish JSON-RPC from binary protocols
+- ✅ Separate handlers for binary and JSON clients
+- ✅ JSON monitor thread handles all I/O independently
+- ✅ Removed problematic async processing structures
+- ✅ Synchronous response handling ensures stable connections
+
+**Result**: First request now works reliably with proper response handling.
+
+## Known Issues
+
+### Critical: Daemon Crashes on Second Request
+The daemon currently crashes when processing a second `create_project` request due to a memory management issue in the Goxel core:
+
+**Root Cause**: In `goxel_core_create_project()`, both `ctx->image` and global `goxel.image` point to the same memory. When creating a new project, the function deletes the old image, causing a use-after-free error on subsequent calls.
+
+**Impact**: 
+- First request: ✅ Works perfectly
+- Subsequent requests: ❌ Daemon crashes with SIGABRT
+
+**Workaround**: Restart daemon between requests (not suitable for production)
+
+**Fix Required**: The Goxel core needs proper separation between context-specific and global state management.
+
 ## Performance
 
-v14.0 achieves **683% improvement** (7.83x faster) over v13:
-- Concurrent request processing
-- Optimized worker pool architecture
-- Efficient socket communication
-- Memory-efficient voxel operations
+When operational, v14.0 shows significant performance improvements:
+- Protocol detection and routing working efficiently
+- Socket communication optimized
+- First request processes correctly with proper response handling
+- Full performance benefits blocked by memory management issue
 
 ---
 
-**Last Updated**: January 30, 2025  
-**Version**: 14.0.0 (Production Released)  
-**Status**: 🎉 **PRODUCTION READY WITH HOMEBREW PACKAGING**
+**Last Updated**: January 31, 2025  
+**Version**: 14.0.0-beta  
+**Status**: ⚠️ **BETA - Critical memory management issue prevents production use**

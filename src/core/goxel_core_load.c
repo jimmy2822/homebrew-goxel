@@ -73,9 +73,8 @@ int goxel_core_load_project_impl(goxel_core_context_t *ctx, const char *path)
         }
         snprintf(ctx->recent_files[0], sizeof(ctx->recent_files[0]), "%s", path);
         
-        // Phase 5: Safe global synchronization AFTER load complete
-        extern goxel_t goxel;
-        goxel.image = ctx->image;
+        // Phase 5: Do NOT sync to global state to avoid shared references
+        // Global sync should only happen temporarily when needed
         
         LOG_I("Project loaded successfully: %s", path);
     } else {

@@ -1155,6 +1155,9 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         return NULL;
     }
     
+    // Initialize global goxel instance for daemon mode
+    goxel_init();
+    
     // Initialize Goxel contexts - one per worker thread
     json_rpc_result_t init_result = json_rpc_init_goxel_context();
     if (init_result != JSON_RPC_SUCCESS) {

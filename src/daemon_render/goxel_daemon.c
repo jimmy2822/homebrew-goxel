@@ -112,8 +112,8 @@ void goxel_init(void)
     
     // Initialize core components
     goxel.palette = NULL; // Palette will be loaded on demand
-    goxel.image = image_new();
-    goxel.tool = NULL;  // No tools in headless mode
+    goxel.image = NULL;    // Don't create a default image - let contexts manage their own
+    goxel.tool = NULL;     // No tools in headless mode
     goxel.snap_mask = SNAP_VOLUME;
     
     // Initialize default material

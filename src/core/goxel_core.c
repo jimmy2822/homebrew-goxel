@@ -118,20 +118,23 @@ int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int w
     if (!ctx) return -1;
     if (check_read_only(ctx, "create project") != 0) return -1;
     
+    // Clean up existing image if present
     if (ctx->image) {
+        // Check if global goxel.image points to the same image
+        extern goxel_t goxel;
+        if (goxel.image == ctx->image) {
+            // Clear the global reference to avoid use-after-free
+            goxel.image = NULL;
+        }
         image_delete(ctx->image);
+        ctx->image = NULL;
     }
     
+    // Create new image
     ctx->image = image_new();
     if (!ctx->image) return -1;
     
-    // Sync to global goxel context for export functions
-    extern goxel_t goxel;
-    if (goxel.image && goxel.image != ctx->image) {
-        image_delete(goxel.image);
-    }
-    goxel.image = ctx->image;
-    
+    // Set project name if provided
     if (name) {
         // Allocate memory for path string (path is char*, not char[])
         if (ctx->image->path) {
@@ -143,9 +146,8 @@ int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int w
     // Note: width, height, depth parameters are for initial project setup
     // In Goxel, projects can grow dynamically, so these are informational
     
-    // Set ambient light to 1.0 for new projects to prevent dark voxel display
-    extern goxel_t goxel;
-    goxel.rend.settings.ambient = 1.0f;
+    // NOTE: We do NOT sync ctx->image to goxel.image here to avoid shared references
+    // The global sync should only happen temporarily when needed (e.g., during export)
     
     return 0;
 }
@@ -166,15 +168,19 @@ int goxel_core_save_project(goxel_core_context_t *ctx, const char *path)
     
     LOG_D("Saving project to: %s", path);
     
-    // Sync context to global goxel first
+    // Temporarily sync context to global goxel for export operation
     extern goxel_t goxel;
+    image_t *original_image = goxel.image;
     goxel.image = ctx->image;
     
-    LOG_D("Synced goxel.image, calling goxel_export_to_file");
+    LOG_D("Temporarily synced goxel.image, calling goxel_export_to_file");
     
     int ret = goxel_export_to_file(path, NULL);
     
     LOG_D("goxel_export_to_file returned: %d", ret);
+    
+    // Restore original global state
+    goxel.image = original_image;
     
     if (ret == 0) {
         // Properly set the image path using dynamic allocation
@@ -808,19 +814,23 @@ int goxel_core_execute_script_file(goxel_core_context_t *ctx, const char *script
     
     // Execute the script using the existing QuickJS system
     int result = script_run_from_file(script_file, 0, NULL);
-    if (result != 0) {
-        LOG_E("Script execution failed with code: %d", result);
-        // Restore original image even on failure
-        goxel.image = original_image;
-        return result;
-    }
     
-    // Keep any changes made by the script to our context
-    // (The script may have modified goxel.image, so we keep it)
-    ctx->image = goxel.image;
+    // If script created a new image, update our context
+    if (goxel.image != ctx->image) {
+        // Script created a new image, adopt it
+        if (ctx->image) {
+            image_delete(ctx->image);
+        }
+        ctx->image = goxel.image;
+    }
     
     // Restore original global state 
     goxel.image = original_image;
+    
+    if (result != 0) {
+        LOG_E("Script execution failed with code: %d", result);
+        return result;
+    }
     
     LOG_I("Script executed successfully: %s", script_file);
     return 0;
@@ -840,19 +850,23 @@ int goxel_core_execute_script(goxel_core_context_t *ctx, const char *script_code
     
     // Execute the script using the new inline script function
     int result = script_run_from_string(script_code, "<inline-script>");
-    if (result != 0) {
-        LOG_E("Inline script execution failed with code: %d", result);
-        // Restore original image even on failure
-        goxel.image = original_image;
-        return result;
-    }
     
-    // Keep any changes made by the script to our context
-    // (The script may have modified goxel.image, so we keep it)
-    ctx->image = goxel.image;
+    // If script created a new image, update our context
+    if (goxel.image != ctx->image) {
+        // Script created a new image, adopt it
+        if (ctx->image) {
+            image_delete(ctx->image);
+        }
+        ctx->image = goxel.image;
+    }
     
     // Restore original global state 
     goxel.image = original_image;
+    
+    if (result != 0) {
+        LOG_E("Inline script execution failed with code: %d", result);
+        return result;
+    }
     
     LOG_I("Inline script executed successfully");
     return 0;
