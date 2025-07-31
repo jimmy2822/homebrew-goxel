@@ -17,6 +17,7 @@
  */
 
 #include "socket_server.h"
+#include "json_socket_handler.h"
 #include "../log.h"
 
 #include <stdio.h>
@@ -147,8 +148,6 @@ static void *accept_thread_func(void *arg);
 static void *worker_thread_func(void *arg);
 static socket_error_t handle_client_connection(socket_server_t *server, 
                                               socket_client_t *client);
-static socket_error_t read_message_from_client(socket_client_t *client,
-                                              socket_message_t **message);
 static socket_error_t write_message_to_client(socket_client_t *client,
                                              const socket_message_t *message);
 static socket_client_t *create_client(socket_server_t *server, int client_fd);
@@ -157,6 +156,12 @@ static socket_error_t add_client(socket_server_t *server, socket_client_t *clien
 static socket_error_t remove_client(socket_server_t *server, socket_client_t *client);
 static socket_error_t setup_socket_options(int fd);
 static int64_t get_current_time_us(void);
+static socket_error_t handle_binary_client(socket_server_t *server,
+                                          socket_client_t *client);
+static socket_error_t handle_json_client(socket_server_t *server,
+                                        socket_client_t *client);
+static socket_error_t read_binary_message_from_client(socket_client_t *client,
+                                                     socket_message_t **message);
 
 // ============================================================================
 // ERROR HANDLING IMPLEMENTATION
@@ -396,6 +401,10 @@ static socket_client_t *create_client(socket_server_t *server, int client_fd)
     client->buffer = malloc(client->buffer_capacity);
     client->authenticated = false;
     client->user_data = NULL;
+    client->protocol = PROTOCOL_BINARY;  // Default to binary, will be detected later
+    
+    // Initialize protocol-specific data
+    memset(&client->handler_data, 0, sizeof(client->handler_data));
     
     if (!client->buffer) {
         free(client);
@@ -998,9 +1007,29 @@ static socket_error_t handle_client_connection(socket_server_t *server,
 {
     LOG_I("Handling client connection: ID=%u", client->id);
     
+    // Peek at first few bytes to detect protocol
+    char magic[4];
+    ssize_t peeked = recv(client->fd, magic, 4, MSG_PEEK);
+    
+    if (peeked >= 2 && magic[0] == '{' && magic[1] == '"') {
+        client->protocol = PROTOCOL_JSON_RPC;
+        LOG_I("Client %u detected as JSON-RPC protocol", client->id);
+        return handle_json_client(server, client);
+    } else {
+        client->protocol = PROTOCOL_BINARY;
+        LOG_I("Client %u detected as binary protocol", client->id);
+        return handle_binary_client(server, client);
+    }
+}
+
+static socket_error_t handle_binary_client(socket_server_t *server,
+                                          socket_client_t *client)
+{
+    LOG_I("Handling binary client: ID=%u", client->id);
+    
     while (server->running) {
         socket_message_t *message = NULL;
-        socket_error_t result = read_message_from_client(client, &message);
+        socket_error_t result = read_binary_message_from_client(client, &message);
         
         if (result == SOCKET_ERROR_CONNECTION_LOST) {
             LOG_I("Client %u disconnected", client->id);
@@ -1052,12 +1081,40 @@ static socket_error_t handle_client_connection(socket_server_t *server,
     return SOCKET_SUCCESS;
 }
 
+static socket_error_t handle_json_client(socket_server_t *server,
+                                        socket_client_t *client)
+{
+    LOG_I("Handling JSON client: ID=%u", client->id);
+    
+    // Call client handler to notify connection
+    if (server->config.client_handler) {
+        server->config.client_handler(server, client, true, server->config.user_data);
+    }
+    
+    // JSON handler manages its own I/O loop through monitor thread
+    // Just wait for it to complete
+    while (server->running && client->handler_data.json.monitor_running) {
+        usleep(100000); // 100ms
+    }
+    
+    // Call client handler to notify disconnection
+    if (server->config.client_handler) {
+        server->config.client_handler(server, client, false, server->config.user_data);
+    }
+    
+    // Clean up client
+    remove_client(server, client);
+    destroy_client(client);
+    
+    return SOCKET_SUCCESS;
+}
+
 // ============================================================================
 // MESSAGE I/O IMPLEMENTATION
 // ============================================================================
 
-static socket_error_t read_message_from_client(socket_client_t *client,
-                                              socket_message_t **message)
+static socket_error_t read_binary_message_from_client(socket_client_t *client,
+                                                     socket_message_t **message)
 {
     if (!client || !message) return SOCKET_ERROR_INVALID_PARAMETER;
     

@@ -40,6 +40,7 @@ goxel_t goxel;
 
 // Forward declarations
 static int64_t get_current_time_us(void);
+static const char *get_persistent_socket_path(const char *requested_path);
 
 // Logging macros
 #define LOG_ERROR(fmt, ...) fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
@@ -93,12 +94,10 @@ static const struct option long_options[] = {
 // PROTOCOL DEFINITIONS
 // ============================================================================
 
-// Protocol modes
-typedef enum {
-    PROTOCOL_AUTO = 0,        /**< Auto-detect protocol */
-    PROTOCOL_JSON_RPC = 1,    /**< JSON-RPC only */
-    PROTOCOL_MCP = 2          /**< MCP only */
-} protocol_mode_t;
+// Protocol modes - these are defined in socket_server.h
+// Additional protocol modes beyond binary/JSON-RPC
+#define PROTOCOL_AUTO 0        /**< Auto-detect protocol */
+#define PROTOCOL_MCP 2         /**< MCP only */
 
 // Magic bytes for protocol detection (4 bytes)
 #define JSONRPC_MAGIC 0x7B227661  // {"version or {"method or similar JSON-RPC start
@@ -682,7 +681,7 @@ static void cleanup_request_data(void *request_data);
  * Detect protocol from message magic bytes (4 bytes)
  * Returns detected protocol or PROTOCOL_AUTO if unclear
  */
-static protocol_mode_t detect_protocol_from_magic(const char *data, size_t length)
+static int detect_protocol_from_magic(const char *data, size_t length)
 {
     if (length < MAGIC_DETECT_SIZE) {
         return PROTOCOL_AUTO; // Need more data
@@ -890,19 +889,16 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
         }
     }
     
-    // Create request processing data for async handling
-    request_process_data_t *process_data = calloc(1, sizeof(request_process_data_t));
-    if (!process_data) {
-        json_rpc_free_request(rpc_request);
-        return NULL;
-    }
+    // Update statistics
+    pthread_mutex_lock(&daemon->state_mutex);
+    daemon->stats.protocol_stats.jsonrpc_requests++;
+    pthread_mutex_unlock(&daemon->state_mutex);
     
-    process_data->client = client;
-    process_data->rpc_request = rpc_request;
-    process_data->socket_server = daemon->socket_server;
-    process_data->request_id = message->id;
+    // Note: process_data is only needed for async handling which we're not using yet
     
-    // Submit to worker pool
+    // Skip worker pool submission for now - process synchronously
+    // TODO: Re-enable async processing with proper response handling
+    /*
     worker_pool_error_t submit_result = worker_pool_submit_request(daemon->worker_pool,
                                                                   process_data,
                                                                   WORKER_PRIORITY_NORMAL);
@@ -931,14 +927,58 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
         }
         json_rpc_free_response(error_response);
     }
+    */
     
     // Update statistics
     pthread_mutex_lock(&daemon->state_mutex);
     daemon->stats.protocol_stats.jsonrpc_requests++;
     pthread_mutex_unlock(&daemon->state_mutex);
     
-    // Return NULL since we process asynchronously
-    return NULL;
+    // For now, process synchronously to ensure response is sent
+    // TODO: Implement proper async response handling
+    json_rpc_response_t *response = json_rpc_handle_method(rpc_request);
+    socket_message_t *response_msg = NULL;
+    
+    if (response) {
+        char *response_json = NULL;
+        if (json_rpc_serialize_response(response, &response_json) == JSON_RPC_SUCCESS) {
+            LOG_I("Generated JSON response: %s", response_json);
+            response_msg = socket_message_create_json(message->id, 0, response_json);
+            if (response_msg) {
+                LOG_I("Created response message: id=%u, length=%u, data=%p", 
+                      response_msg->id, response_msg->length, response_msg->data);
+                if (response_msg->data) {
+                    LOG_I("Response data: %.*s", (int)response_msg->length, response_msg->data);
+                }
+            } else {
+                LOG_E("Failed to create response message");
+            }
+            free(response_json);
+        } else {
+            LOG_E("Failed to serialize response");
+        }
+        json_rpc_free_response(response);
+    } else {
+        LOG_W("No response generated from json_rpc_handle_method");
+    }
+    
+    // Clean up the request since we processed synchronously
+    json_rpc_free_request(rpc_request);
+    
+    // Update statistics
+    pthread_mutex_lock(&daemon->state_mutex);
+    daemon->stats.requests_processed++;
+    pthread_mutex_unlock(&daemon->state_mutex);
+    
+    if (response_msg) {
+        LOG_I("Returning response_msg: %p (data=%p, length=%u)", 
+              response_msg, response_msg->data, response_msg->length);
+    } else {
+        LOG_I("Returning NULL response_msg");
+    }
+    fflush(stdout);
+    fflush(stderr);
+    return response_msg;
 }
 
 // ============================================================================
@@ -1016,11 +1056,19 @@ static int process_rpc_request(void *request_data, int worker_id, void *context)
 static void cleanup_request_data(void *request_data)
 {
     request_process_data_t *data = (request_process_data_t*)request_data;
+    LOG_I("cleanup_request_data: data=%p", data);
     if (data) {
+        LOG_I("cleanup_request_data: rpc_request=%p", data->rpc_request);
         if (data->rpc_request) {
-            json_rpc_free_request(data->rpc_request);
+            // Cast away const for cleanup - we own this memory
+            LOG_I("cleanup_request_data: freeing rpc_request");
+            json_rpc_free_request((json_rpc_request_t*)data->rpc_request);
+            data->rpc_request = NULL;
+            LOG_I("cleanup_request_data: rpc_request freed");
         }
+        LOG_I("cleanup_request_data: freeing data structure");
         free(data);
+        LOG_I("cleanup_request_data: data structure freed");
     }
 }
 
@@ -1040,42 +1088,32 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
     }
     
     uint64_t detection_start = get_current_time_us();
-    protocol_mode_t detected_protocol = PROTOCOL_JSON_RPC; // Default fallback
+    int detected_protocol = PROTOCOL_JSON_RPC; // Default fallback
     
     // Protocol detection based on configuration
-    switch (daemon->config->protocol_mode) {
-        case PROTOCOL_AUTO:
-            detected_protocol = detect_protocol_from_magic((char*)message->data, message->length);
-            if (detected_protocol == PROTOCOL_AUTO) {
-                // Fallback to JSON-RPC if detection is unclear
-                detected_protocol = PROTOCOL_JSON_RPC;
-            }
-            pthread_mutex_lock(&daemon->state_mutex);
-            daemon->stats.protocol_stats.auto_detections++;
-            daemon->stats.protocol_stats.protocol_detection_time_us += (get_current_time_us() - detection_start);
-            pthread_mutex_unlock(&daemon->state_mutex);
-            break;
-            
-        case PROTOCOL_JSON_RPC:
+    if (daemon->config->protocol_mode == PROTOCOL_AUTO) {
+        detected_protocol = detect_protocol_from_magic((char*)message->data, message->length);
+        if (detected_protocol == PROTOCOL_AUTO) {
+            // Fallback to JSON-RPC if detection is unclear
             detected_protocol = PROTOCOL_JSON_RPC;
-            break;
-            
-        case PROTOCOL_MCP:
-            detected_protocol = PROTOCOL_MCP;
-            break;
+        }
+        pthread_mutex_lock(&daemon->state_mutex);
+        daemon->stats.protocol_stats.auto_detections++;
+        daemon->stats.protocol_stats.protocol_detection_time_us += (get_current_time_us() - detection_start);
+        pthread_mutex_unlock(&daemon->state_mutex);
+    } else if (daemon->config->protocol_mode == PROTOCOL_JSON_RPC) {
+        detected_protocol = PROTOCOL_JSON_RPC;
+    } else if (daemon->config->protocol_mode == PROTOCOL_MCP) {
+        detected_protocol = PROTOCOL_MCP;
     }
     
     // Route to appropriate protocol handler
     socket_message_t *response = NULL;
-    switch (detected_protocol) {
-        case PROTOCOL_MCP:
-            response = handle_mcp_message(daemon, client, message);
-            break;
-            
-        case PROTOCOL_JSON_RPC:
-        default:
-            response = handle_jsonrpc_message(daemon, client, message);
-            break;
+    if (detected_protocol == PROTOCOL_MCP) {
+        response = handle_mcp_message(daemon, client, message);
+    } else {
+        // Default to JSON-RPC
+        response = handle_jsonrpc_message(daemon, client, message);
     }
     
     return response;
@@ -1154,7 +1192,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     
     // Create socket server
     socket_server_config_t server_config = socket_server_default_config();
-    server_config.socket_path = config->socket_path;
+    server_config.socket_path = get_persistent_socket_path(config->socket_path);
     server_config.max_connections = config->max_connections;
     server_config.thread_per_client = false;
     server_config.thread_pool_size = config->worker_threads;
@@ -1327,7 +1365,7 @@ static int run_daemon(const program_config_t *prog_config)
     if (prog_config->verbose) {
         printf("Starting Goxel daemon with concurrent processing:\n");
         printf("  PID file: %s\n", prog_config->pid_file);
-        printf("  Socket: %s\n", prog_config->socket_path);
+        printf("  Socket: %s\n", get_persistent_socket_path(prog_config->socket_path));
         printf("  Log file: %s\n", prog_config->log_file);
         printf("  Working directory: %s\n", prog_config->working_dir);
         printf("  Daemonize: %s\n", prog_config->daemonize ? "yes" : "no");
@@ -1380,7 +1418,7 @@ static int run_daemon(const program_config_t *prog_config)
     
     if (prog_config->verbose && !prog_config->daemonize) {
         printf("Concurrent daemon started successfully (PID: %d)\n", getpid());
-        printf("  Socket server listening on: %s\n", prog_config->socket_path);
+        printf("  Socket server listening on: %s\n", get_persistent_socket_path(prog_config->socket_path));
         printf("  Protocol mode: %s\n", prog_config->protocol_string);
         printf("  Worker pool with %d threads ready\n", prog_config->worker_threads);
         if (daemon->mcp_initialized) {
@@ -1451,6 +1489,29 @@ static int64_t get_current_time_us(void)
         return 0;
     }
     return (int64_t)tv.tv_sec * 1000000LL + (int64_t)tv.tv_usec;
+}
+
+/**
+ * Get persistent socket path with fallback logic.
+ * Ensures consistent socket path across daemon restarts.
+ */
+static const char *get_persistent_socket_path(const char *requested_path)
+{
+    static char persistent_path[256];
+    
+    if (requested_path && strlen(requested_path) > 0) {
+        strncpy(persistent_path, requested_path, sizeof(persistent_path) - 1);
+        persistent_path[sizeof(persistent_path) - 1] = '\0';
+    } else {
+        // Use Homebrew path if available
+        if (access("/opt/homebrew/var/run/goxel", F_OK) == 0) {
+            strcpy(persistent_path, "/opt/homebrew/var/run/goxel/goxel.sock");
+        } else {
+            strcpy(persistent_path, DEFAULT_SOCKET_PATH);
+        }
+    }
+    
+    return persistent_path;
 }
 
 // ============================================================================

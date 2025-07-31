@@ -28,6 +28,7 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <poll.h>
+#include <fcntl.h>
 
 // ============================================================================
 // JSON SOCKET HANDLER IMPLEMENTATION
@@ -165,7 +166,11 @@ static void *json_client_monitor_thread(void *arg)
     
     LOG_I("JSON client monitor started for client %u", data->client->id);
     
-    while (data->running) {
+    // Set socket to non-blocking for better control
+    int flags = fcntl(data->client->fd, F_GETFL, 0);
+    fcntl(data->client->fd, F_SETFL, flags | O_NONBLOCK);
+    
+    while (data->running && data->client->handler_data.json.monitor_running) {
         // Use poll to check for data with timeout
         struct pollfd pfd;
         pfd.fd = data->client->fd;
@@ -202,18 +207,9 @@ static void *json_client_monitor_thread(void *arg)
             LOG_E("JSON message from client %u too large or malformed (max: %zu bytes)", 
                   data->client->id, sizeof(buffer));
             
-            // Send error response
-            const char *error_response = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error: JSON message too large\"},\"id\":null}";
-            socket_message_t *error_msg = socket_message_create(
-                data->client->id,
-                0,
-                error_response,
-                (uint32_t)strlen(error_response)
-            );
-            if (error_msg) {
-                socket_server_send_message(data->server, data->client, error_msg);
-                socket_message_destroy(error_msg);
-            }
+            // Send error response directly (no binary wrapper)
+            const char *error_response = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error: JSON message too large\"},\"id\":null}\n";
+            send(data->client->fd, error_response, strlen(error_response), MSG_NOSIGNAL);
             
             // Clear the socket buffer to recover
             char discard[1024];
@@ -245,6 +241,7 @@ static void *json_client_monitor_thread(void *arg)
         
         // Process the message
         if (data->msg_handler) {
+            LOG_I("Calling message handler for client %u", data->client->id);
             socket_message_t *response = data->msg_handler(
                 data->server,
                 data->client,
@@ -252,28 +249,52 @@ static void *json_client_monitor_thread(void *arg)
                 data->user_data
             );
             
-            if (response && response->data) {
-                // Send response back as JSON with newline
-                // Note: response->data should already contain the JSON string
-                ssize_t sent = send(data->client->fd, response->data, response->length, MSG_NOSIGNAL);
-                if (sent < 0) {
-                    LOG_E("Failed to send response: %s", strerror(errno));
-                } else {
-                    LOG_D("Sent response to client %u: %.*s", data->client->id, 
+            LOG_I("Message handler returned: %p", response);
+            fflush(stdout);
+            fflush(stderr);
+            if (response) {
+                LOG_I("Response details: data=%p, length=%u", response->data, response->length);
+                if (response->data) {
+                    // Send response back as JSON with newline
+                    // Note: response->data should already contain the JSON string
+                    LOG_I("Sending response to client %u: %.*s", data->client->id, 
                           (int)response->length, response->data);
+                          
+                    ssize_t sent = send(data->client->fd, response->data, response->length, MSG_NOSIGNAL);
+                    if (sent < 0) {
+                        if (errno == EPIPE || errno == ECONNRESET) {
+                            LOG_I("Client %u disconnected during send", data->client->id);
+                            socket_message_destroy(response);
+                            socket_message_destroy(msg);
+                            break;
+                        }
+                        LOG_E("Failed to send response: %s", strerror(errno));
+                    } else {
+                        LOG_I("Successfully sent %zd bytes to client %u", sent, data->client->id);
+                    }
+                    
+                    // Send newline delimiter
+                    ssize_t nl_sent = send(data->client->fd, "\n", 1, MSG_NOSIGNAL);
+                    LOG_I("Sent newline: %zd bytes", nl_sent);
+                    
+                    socket_message_destroy(response);
+                } else {
+                    LOG_W("Response has NULL data for client %u", data->client->id);
                 }
-                
-                // Send newline delimiter
-                send(data->client->fd, "\n", 1, MSG_NOSIGNAL);
-                
-                socket_message_destroy(response);
+            } else {
+                LOG_W("No response generated for client %u message", data->client->id);
             }
+        } else {
+            LOG_W("No message handler set for JSON socket");
         }
         
         socket_message_destroy(msg);
     }
     
     LOG_I("JSON client monitor stopped for client %u", data->client->id);
+    
+    // Mark monitor as not running
+    data->client->handler_data.json.monitor_running = false;
     
     // Clean up
     free(data);
@@ -300,6 +321,9 @@ void json_socket_client_handler(socket_server_t *server,
             g_user_data = user_data;
         }
         
+        // Get the message handler from global
+        socket_message_handler_t msg_handler = g_msg_handler;
+        
         // Create monitor data
         client_monitor_data_t *data = calloc(1, sizeof(client_monitor_data_t));
         if (!data) {
@@ -309,8 +333,8 @@ void json_socket_client_handler(socket_server_t *server,
         
         data->server = server;
         data->client = client;
-        data->msg_handler = g_msg_handler;
-        data->user_data = g_user_data;
+        data->msg_handler = msg_handler;
+        data->user_data = user_data;
         data->running = true;
         
         // Start monitor thread
@@ -321,11 +345,16 @@ void json_socket_client_handler(socket_server_t *server,
             return;
         }
         
-        // Store thread handle in client user data
-        socket_client_set_user_data(client, (void*)(intptr_t)thread);
-        pthread_detach(thread);
+        // Store thread handle in client's handler data
+        client->handler_data.json.monitor_thread = thread;
+        client->handler_data.json.monitor_running = true;
+        
+        // Don't detach - we'll join in handle_json_client
     } else {
         LOG_I("Client %u disconnected", client->id);
+        
+        // Mark monitor as not running
+        client->handler_data.json.monitor_running = false;
         
         // Thread will exit on its own when it detects disconnection
     }

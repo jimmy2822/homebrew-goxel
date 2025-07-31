@@ -117,6 +117,14 @@ struct socket_message {
 // ============================================================================
 
 /**
+ * Protocol mode for client connections.
+ */
+typedef enum {
+    PROTOCOL_BINARY,                /**< Binary protocol with 16-byte header */
+    PROTOCOL_JSON_RPC              /**< JSON-RPC protocol */
+} protocol_mode_t;
+
+/**
  * Client connection information.
  */
 struct socket_client {
@@ -131,6 +139,18 @@ struct socket_client {
     size_t buffer_capacity;         /**< Buffer capacity */
     bool authenticated;             /**< Client authentication status */
     void *user_data;                /**< User-defined client data */
+    protocol_mode_t protocol;       /**< Protocol mode for this client */
+    union {
+        struct {
+            char *buffer;
+            size_t buffer_size;
+            size_t buffer_capacity;
+        } binary;
+        struct {
+            pthread_t monitor_thread;
+            bool monitor_running;
+        } json;
+    } handler_data;                 /**< Protocol-specific handler data */
 };
 
 // ============================================================================
