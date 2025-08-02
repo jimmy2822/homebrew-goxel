@@ -823,7 +823,12 @@ socket_error_t socket_server_stop(socket_server_t *server)
     
     // Clean up socket file
     if (server->socket_path) {
-        unlink(server->socket_path);
+        LOG_I("Cleaning up socket file: %s", server->socket_path);
+        if (unlink(server->socket_path) == 0) {
+            LOG_I("Socket file removed successfully");
+        } else {
+            LOG_W("Failed to remove socket file: %s", strerror(errno));
+        }
     }
     
     LOG_I("Socket server stopped");

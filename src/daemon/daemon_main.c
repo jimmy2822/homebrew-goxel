@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <signal.h>
 
 // Global goxel instance required by core functions
 goxel_t goxel;
@@ -191,6 +192,19 @@ typedef struct {
     pthread_t cleanup_thread;
     bool cleanup_thread_running;
 } concurrent_daemon_t;
+
+// Global daemon pointer for signal handler
+static concurrent_daemon_t *g_daemon = NULL;
+
+// Signal handler for graceful shutdown
+static void signal_handler(int sig) {
+    if (sig == SIGTERM || sig == SIGINT) {
+        if (g_daemon) {
+            LOG_INFO("Received signal %d, shutting down", sig);
+            g_daemon->running = false;
+        }
+    }
+}
 
 // ============================================================================
 // PROJECT CLEANUP THREAD
@@ -1273,6 +1287,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         return NULL;
     }
     
+    
     // Create worker pool
     worker_pool_config_t pool_config = worker_pool_default_config();
     pool_config.worker_count = config->worker_threads;
@@ -1373,6 +1388,7 @@ static void destroy_concurrent_daemon(concurrent_daemon_t *daemon)
 {
     if (!daemon) return;
     
+    LOG_INFO("Destroying daemon...");
     daemon->running = false;
     
     // Stop cleanup thread
@@ -1489,6 +1505,13 @@ static int run_daemon(const program_config_t *prog_config)
         return 1;
     }
     
+    // Set global daemon pointer for signal handler
+    g_daemon = daemon;
+    
+    // Install signal handlers
+    signal(SIGTERM, signal_handler);
+    signal(SIGINT, signal_handler);
+    
     // Set daemon as running
     pthread_mutex_lock(&daemon->state_mutex);
     daemon->running = true;
@@ -1520,6 +1543,8 @@ static int run_daemon(const program_config_t *prog_config)
             break;
         }
     }
+    
+    LOG_INFO("Exited main loop, daemon->running = %d", daemon->running);
     
     if (prog_config->verbose && !prog_config->daemonize) {
         printf("Daemon shutting down...\n");
@@ -1553,6 +1578,7 @@ static int run_daemon(const program_config_t *prog_config)
     
     // Cleanup daemon
     destroy_concurrent_daemon(daemon);
+    g_daemon = NULL;
     
     if (prog_config->verbose && !prog_config->daemonize) {
         printf("Daemon stopped\n");
