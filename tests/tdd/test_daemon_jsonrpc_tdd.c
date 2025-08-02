@@ -188,6 +188,38 @@ jsonrpc_response_t* handle_add_voxels(jsonrpc_request_t* req) {
     return create_success_response(req->id, result_json);
 }
 
+jsonrpc_response_t* handle_remove_voxels(jsonrpc_request_t* req) {
+    if (!req) return NULL;
+    
+    if (strcmp(req->method, "goxel.remove_voxels") != 0) {
+        return create_error_response(req->id, "Invalid method");
+    }
+    
+    // Parse params to count voxels
+    if (!req->params_json) {
+        return create_error_response(req->id, "Missing params");
+    }
+    
+    // Simple voxel counting - look for "position" occurrences
+    int voxel_count = 0;
+    const char* pos = req->params_json;
+    while ((pos = strstr(pos, "\"position\"")) != NULL) {
+        voxel_count++;
+        pos += 10; // Move past "position"
+    }
+    
+    if (voxel_count == 0) {
+        return create_error_response(req->id, "No voxels to remove");
+    }
+    
+    // Create success response with count
+    char result_json[256];
+    snprintf(result_json, sizeof(result_json), 
+             "{\"removed\":true,\"count\":%d}", voxel_count);
+    
+    return create_success_response(req->id, result_json);
+}
+
 int test_parse_valid_request() {
     const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.create_project\",\"id\":42}";
     
@@ -331,6 +363,63 @@ int test_handle_add_voxels_empty_array() {
     return 1;
 }
 
+int test_handle_remove_voxels_single() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.remove_voxels\",\"params\":{\"voxels\":[{\"position\":[5,5,5]}]},\"id\":10}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_remove_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT_EQ(10, resp->id);
+    TEST_ASSERT(strstr(resp->result_json, "removed") != NULL, "Should indicate voxels were removed");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_remove_voxels_multiple() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.remove_voxels\",\"params\":{\"voxels\":[{\"position\":[0,0,0]},{\"position\":[1,1,1]},{\"position\":[2,2,2]},{\"position\":[3,3,3]}]},\"id\":11}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_remove_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT(strstr(resp->result_json, "\"count\":4") != NULL, "Should report 4 voxels removed");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_remove_voxels_empty() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.remove_voxels\",\"params\":{\"voxels\":[]},\"id\":12}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_remove_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should be error for empty voxel array");
+    TEST_ASSERT_STR_EQ("No voxels to remove", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_remove_voxels_invalid_method() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.invalid\",\"id\":13}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_remove_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should be error");
+    TEST_ASSERT_STR_EQ("Invalid method", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
 int main() {
     TEST_SUITE_BEGIN();
     
@@ -345,6 +434,10 @@ int main() {
     RUN_TEST(test_handle_add_voxels_single);
     RUN_TEST(test_handle_add_voxels_multiple);
     RUN_TEST(test_handle_add_voxels_empty_array);
+    RUN_TEST(test_handle_remove_voxels_single);
+    RUN_TEST(test_handle_remove_voxels_multiple);
+    RUN_TEST(test_handle_remove_voxels_empty);
+    RUN_TEST(test_handle_remove_voxels_invalid_method);
     
     TEST_SUITE_END();
     
