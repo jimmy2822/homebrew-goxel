@@ -20,6 +20,12 @@
 #include "json_socket_handler.h"
 #include "../log.h"
 
+// External declaration for JSON client handler
+extern void json_socket_client_handler(socket_server_t *server,
+                                     socket_client_t *client,
+                                     bool connected,
+                                     void *user_data);
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,8 +150,14 @@ struct socket_server {
 // FORWARD DECLARATIONS
 // ============================================================================
 
+typedef struct {
+    socket_server_t *server;
+    socket_client_t *client;
+} client_thread_data_t;
+
 static void *accept_thread_func(void *arg);
 static void *worker_thread_func(void *arg);
+static void *client_connection_thread(void *arg);
 static socket_error_t handle_client_connection(socket_server_t *server, 
                                               socket_client_t *client);
 static socket_error_t write_message_to_client(socket_client_t *client,
@@ -921,19 +933,53 @@ static void *accept_thread_func(void *arg)
         // Handle client connection based on configuration
         if (server->config.thread_per_client) {
             // Create thread per client
+            client_thread_data_t *thread_data = malloc(sizeof(client_thread_data_t));
+            if (!thread_data) {
+                SET_ERROR(server, "Failed to allocate thread data");
+                remove_client(server, client);
+                destroy_client(client);
+                continue;
+            }
+            
+            thread_data->server = server;
+            thread_data->client = client;
+            
             pthread_t client_thread;
             if (pthread_create(&client_thread, NULL, 
-                             (void*(*)(void*))handle_client_connection, 
-                             client) != 0) {
+                             client_connection_thread, 
+                             thread_data) != 0) {
                 SET_ERROR(server, "Failed to create client thread");
+                free(thread_data);
                 remove_client(server, client);
                 destroy_client(client);
                 continue;
             }
             pthread_detach(client_thread);
         } else {
-            // Use thread pool - start monitoring this client for messages
-            // This will be handled by the worker threads
+            // Use thread pool - need to detect protocol and start appropriate handler
+            // Do protocol detection in a separate thread to avoid blocking accept
+            client_thread_data_t *thread_data = malloc(sizeof(client_thread_data_t));
+            if (!thread_data) {
+                SET_ERROR(server, "Failed to allocate thread data");
+                remove_client(server, client);
+                destroy_client(client);
+                continue;
+            }
+            
+            thread_data->server = server;
+            thread_data->client = client;
+            
+            pthread_t protocol_thread;
+            if (pthread_create(&protocol_thread, NULL, 
+                             client_connection_thread, 
+                             thread_data) != 0) {
+                SET_ERROR(server, "Failed to create protocol detection thread");
+                free(thread_data);
+                remove_client(server, client);
+                destroy_client(client);
+                continue;
+            }
+            pthread_detach(protocol_thread);
         }
     }
     
@@ -1002,6 +1048,18 @@ static void *worker_thread_func(void *arg)
     return NULL;
 }
 
+static void *client_connection_thread(void *arg)
+{
+    client_thread_data_t *data = (client_thread_data_t *)arg;
+    socket_server_t *server = data->server;
+    socket_client_t *client = data->client;
+    
+    free(data);  // Free the thread data
+    
+    handle_client_connection(server, client);
+    return NULL;
+}
+
 static socket_error_t handle_client_connection(socket_server_t *server, 
                                               socket_client_t *client)
 {
@@ -1014,6 +1072,7 @@ static socket_error_t handle_client_connection(socket_server_t *server,
     if (peeked >= 2 && magic[0] == '{' && magic[1] == '"') {
         client->protocol = PROTOCOL_JSON_RPC;
         LOG_I("Client %u detected as JSON-RPC protocol", client->id);
+        // For JSON clients, the monitor thread handles everything including cleanup
         return handle_json_client(server, client);
     } else {
         client->protocol = PROTOCOL_BINARY;
@@ -1086,26 +1145,15 @@ static socket_error_t handle_json_client(socket_server_t *server,
 {
     LOG_I("Handling JSON client: ID=%u", client->id);
     
-    // Call client handler to notify connection
-    if (server->config.client_handler) {
-        server->config.client_handler(server, client, true, server->config.user_data);
-    }
+    // For JSON clients, we need to start the JSON monitor thread
+    // Call the JSON socket client handler directly
+    json_socket_client_handler(server, client, true, server->config.user_data);
     
-    // JSON handler manages its own I/O loop through monitor thread
-    // Just wait for it to complete
-    while (server->running && client->handler_data.json.monitor_running) {
-        usleep(100000); // 100ms
-    }
+    // For JSON clients, the monitor thread handles all I/O
+    // We don't need to wait here - the monitor thread will handle cleanup
+    // when the client disconnects
     
-    // Call client handler to notify disconnection
-    if (server->config.client_handler) {
-        server->config.client_handler(server, client, false, server->config.user_data);
-    }
-    
-    // Clean up client
-    remove_client(server, client);
-    destroy_client(client);
-    
+    LOG_I("JSON client %u monitor thread started, returning from handler", client->id);
     return SOCKET_SUCCESS;
 }
 

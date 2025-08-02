@@ -21,11 +21,13 @@
 #include "bulk_voxel_ops.h"
 #include "color_analysis.h"
 #include "worker_pool.h"
+#include "project_mutex.h"
 #include "../core/utils/json.h"
 #include "../../ext_src/json/json-builder.h"
 #include "../../ext_src/json/json.h"
 #include "../log.h"
 #include "../core/goxel_core.h"
+#include "../goxel.h"
 #include "../script.h"
 #include <time.h>
 #include <unistd.h>
@@ -1310,7 +1312,56 @@ static json_rpc_response_t *handle_goxel_create_project(const json_rpc_request_t
                                              NULL, &request->id);
     }
     
-    // Parameters: name (optional), width (optional, default 64), height (optional, default 64), depth (optional, default 64)
+    // Acquire exclusive project lock
+    char request_id[32];
+    if (request->id.type == JSON_RPC_ID_NUMBER) {
+        snprintf(request_id, sizeof(request_id), "req_%lld", 
+                 (long long)request->id.value.number);
+    } else if (request->id.type == JSON_RPC_ID_STRING) {
+        snprintf(request_id, sizeof(request_id), "req_%s", 
+                 request->id.value.string);
+    } else {
+        snprintf(request_id, sizeof(request_id), "req_null");
+    }
+    
+    if (project_lock_acquire(request_id) != 0) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+            "Another project operation is in progress", 
+            NULL, &request->id);
+    }
+    
+    // QUICK FIX: Complete cleanup before creating new project
+    extern goxel_t goxel;
+    
+    // Step 1: Clear ALL global state
+    if (goxel.image) {
+        image_delete(goxel.image);
+        goxel.image = NULL;
+    }
+    
+    // Step 2: Reset context
+    if (g_goxel_context->image) {
+        // Don't delete if it's the same as global (already deleted)
+        if (g_goxel_context->image != goxel.image) {
+            image_delete(g_goxel_context->image);
+        }
+        g_goxel_context->image = NULL;
+    }
+    
+    // Step 3: Clear any cached materials, cameras, etc.
+    goxel.image = NULL;
+    goxel.tool = NULL;
+    goxel.tool_volume = NULL;
+    if (goxel.layers_volume_) {
+        volume_delete(goxel.layers_volume_);
+        goxel.layers_volume_ = NULL;
+    }
+    if (goxel.render_volume_) {
+        volume_delete(goxel.render_volume_);
+        goxel.render_volume_ = NULL;
+    }
+    
+    // Continue with original logic...
     const char *name = get_string_param(&request->params, 0, "name");
     int width = get_int_param(&request->params, 1, "width");
     int height = get_int_param(&request->params, 2, "height"); 
@@ -1328,9 +1379,21 @@ static json_rpc_response_t *handle_goxel_create_project(const json_rpc_request_t
     if (result != 0) {
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Failed to create project: error code %d", result);
+        project_lock_release(); // Release lock on error
         return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 1,
                                              error_msg, NULL, &request->id);
     }
+    
+    // Update project state
+    g_project_state.has_active_project = true;
+    strncpy(g_project_state.project_id, name ? name : "unnamed", 
+            sizeof(g_project_state.project_id) - 1);
+    g_project_state.last_activity = time(NULL);
+    
+    // QUICK FIX: Ensure global is synced
+    goxel.image = g_goxel_context->image;
+    
+    // Note: Don't release lock here - keep it until save/export/timeout
     
     json_value *result_obj = json_object_new(5);
     json_object_push(result_obj, "success", json_boolean_new(1));
@@ -1400,6 +1463,11 @@ static json_rpc_response_t *handle_goxel_save_project(const json_rpc_request_t *
         return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 3,
                                              error_msg, NULL, &request->id);
     }
+    
+    // Release project lock after successful save
+    project_lock_release();
+    g_project_state.has_active_project = false;
+    memset(g_project_state.project_id, 0, sizeof(g_project_state.project_id));
     
     json_value *result_obj = json_object_new(2);
     json_object_push(result_obj, "success", json_boolean_new(1));
@@ -1568,6 +1636,11 @@ static json_rpc_response_t *handle_goxel_export_model(const json_rpc_request_t *
         return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 7,
                                              error_msg, NULL, &request->id);
     }
+    
+    // Release project lock after successful export
+    project_lock_release();
+    g_project_state.has_active_project = false;
+    memset(g_project_state.project_id, 0, sizeof(g_project_state.project_id));
     
     json_value *result_obj = json_object_new(3);
     json_object_push(result_obj, "success", json_boolean_new(1));

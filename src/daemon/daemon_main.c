@@ -24,6 +24,7 @@
 #include "json_socket_handler.h"
 #include "mcp_handler.h"
 #include "test_methods.h"
+#include "project_mutex.h"
 #include "../core/goxel_core.h"
 #include "../goxel.h"
 #include <stdio.h>
@@ -185,7 +186,54 @@ typedef struct {
         int64_t start_time_us;
         protocol_stats_t protocol_stats;
     } stats;
+    
+    // Cleanup thread
+    pthread_t cleanup_thread;
+    bool cleanup_thread_running;
 } concurrent_daemon_t;
+
+// ============================================================================
+// PROJECT CLEANUP THREAD
+// ============================================================================
+
+/**
+ * Cleanup thread function - automatically cleans up idle projects
+ */
+static void *project_cleanup_thread(void *arg)
+{
+    concurrent_daemon_t *daemon = (concurrent_daemon_t *)arg;
+    
+    LOG_I("Project cleanup thread started");
+    
+    while (daemon->cleanup_thread_running) {
+        sleep(10); // Check every 10 seconds
+        
+        if (project_is_idle(300)) { // 5 minute timeout
+            LOG_I("Auto-cleaning idle project");
+            
+            if (project_lock_acquire("auto_cleanup") == 0) {
+                // Reset all Goxel contexts
+                for (int i = 0; i < daemon->num_contexts; i++) {
+                    if (daemon->goxel_contexts[i]) {
+                        goxel_core_reset(daemon->goxel_contexts[i]);
+                    }
+                }
+                
+                // Clear project state
+                g_project_state.has_active_project = false;
+                memset(g_project_state.project_id, 0, sizeof(g_project_state.project_id));
+                
+                project_lock_release();
+                LOG_I("Idle project cleaned up successfully");
+            } else {
+                LOG_W("Could not acquire lock for auto-cleanup");
+            }
+        }
+    }
+    
+    LOG_I("Project cleanup thread stopped");
+    return NULL;
+}
 
 // ============================================================================
 // HELP AND VERSION FUNCTIONS
@@ -1158,6 +1206,16 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     // Initialize global goxel instance for daemon mode
     goxel_init();
     
+    // Initialize project mutex system
+    if (project_mutex_init() != 0) {
+        LOG_ERROR("Failed to initialize project mutex system");
+        pthread_mutex_destroy(&daemon->state_mutex);
+        pthread_mutex_destroy(&daemon->protocol_mutex);
+        free(daemon->goxel_contexts);
+        free(daemon);
+        return NULL;
+    }
+    
     // Initialize Goxel contexts - one per worker thread
     json_rpc_result_t init_result = json_rpc_init_goxel_context();
     if (init_result != JSON_RPC_SUCCESS) {
@@ -1200,7 +1258,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     server_config.thread_per_client = false;
     server_config.thread_pool_size = config->worker_threads;
     server_config.msg_handler = handle_socket_message;
-    server_config.client_handler = json_socket_client_handler;  // Use JSON client handler
+    server_config.client_handler = NULL;  // Don't set client handler - will call manually after protocol detection
     server_config.user_data = daemon;
     
     daemon->socket_server = socket_server_create(&server_config);
@@ -1317,6 +1375,15 @@ static void destroy_concurrent_daemon(concurrent_daemon_t *daemon)
     
     daemon->running = false;
     
+    // Stop cleanup thread
+    if (daemon->cleanup_thread_running) {
+        daemon->cleanup_thread_running = false;
+        pthread_join(daemon->cleanup_thread, NULL);
+    }
+    
+    // Cleanup project mutex system
+    project_mutex_cleanup();
+    
     // Stop components
     if (daemon->worker_pool) {
         worker_pool_stop(daemon->worker_pool);
@@ -1409,6 +1476,15 @@ static int run_daemon(const program_config_t *prog_config)
     if (server_result != SOCKET_SUCCESS) {
         fprintf(stderr, "Failed to start socket server: %s\n", 
                 socket_error_string(server_result));
+        destroy_concurrent_daemon(daemon);
+        return 1;
+    }
+    
+    // Start cleanup thread
+    daemon->cleanup_thread_running = true;
+    int ret = pthread_create(&daemon->cleanup_thread, NULL, project_cleanup_thread, daemon);
+    if (ret != 0) {
+        fprintf(stderr, "Failed to create cleanup thread: %s\n", strerror(ret));
         destroy_concurrent_daemon(daemon);
         return 1;
     }

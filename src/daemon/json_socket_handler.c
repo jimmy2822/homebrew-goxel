@@ -296,7 +296,10 @@ static void *json_client_monitor_thread(void *arg)
     // Mark monitor as not running
     data->client->handler_data.json.monitor_running = false;
     
-    // Clean up
+    // Disconnect client using public API
+    socket_server_disconnect_client(data->server, data->client);
+    
+    // Clean up monitor data
     free(data);
     return NULL;
 }
