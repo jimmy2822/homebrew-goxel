@@ -120,8 +120,48 @@ The daemon can only handle one request per session due to architectural constrai
 - 80 character line limit
 - snake_case naming
 
+### Test-Driven Development (TDD)
+
+**We follow TDD best practices to avoid wasting time and ensure every line of code has a clear purpose.**
+
+#### TDD Workflow
+1. **Red** - Write a failing test first
+2. **Green** - Write minimal code to pass the test
+3. **Refactor** - Improve code quality while keeping tests passing
+
+#### Quick Start
+```bash
+# Run all TDD tests
+./tests/run_tdd_tests.sh
+
+# Run specific TDD tests
+cd tests/tdd
+make
+```
+
+#### Writing New Features with TDD
+```bash
+# 1. Create test file
+touch tests/tdd/test_new_feature.c
+
+# 2. Write failing test
+# 3. Run test to confirm it fails
+# 4. Implement feature
+# 5. Run test until it passes
+# 6. Refactor if needed
+```
+
+#### TDD Resources
+- Framework: `tests/tdd/tdd_framework.h`
+- Examples: `tests/tdd/example_voxel_tdd.c`, `tests/tdd/test_daemon_jsonrpc_tdd.c`
+- Guide: `tests/tdd/TDD_WORKFLOW.md`
+- Quick Start: `tests/tdd/README.md`
+
 ### Testing
 ```bash
+# Run TDD tests (required before commits)
+./tests/run_tdd_tests.sh
+
 # Run daemon manually
 ./goxel-daemon --foreground --socket /tmp/test.sock
 
@@ -138,5 +178,16 @@ print(s.recv(4096))
 ---
 
 **Version**: 15.0.0-dev  
-**Updated**: December 2024  
+**Updated**: January 2025  
 **Status**: Development - Not Production Ready
+
+## Development Philosophy
+
+### TDD is Mandatory
+All new features and bug fixes MUST be developed using Test-Driven Development. This ensures:
+- Clear goals before coding
+- No wasted time on unnecessary features  
+- High confidence in code quality
+- Built-in regression testing
+
+**No code will be merged without accompanying tests.**
