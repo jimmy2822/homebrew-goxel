@@ -6,6 +6,7 @@ Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15
 
 **⚠️ v15.0 Status: DEVELOPMENT - Single Operation Per Session**
 - **JSON-RPC**: ✅ All 15 methods implemented and functional
+- **TDD Tests**: ✅ 77 tests, 100% passing (test_daemon_jsonrpc_tdd.c)
 - **First Request**: ✅ Works correctly 
 - **Subsequent Requests**: ❌ Daemon hangs (architectural limitation)
 - **Production Ready**: ❌ Requires architectural refactor
@@ -66,15 +67,15 @@ scons daemon=1
 The daemon supports these methods (array parameters):
 
 ### Project Management
-- `goxel.create_project` - params: [name, width, height, depth]
-- `goxel.open_file` - params: [path]
+- `goxel.create_project` - params: [name, width, height, depth] ✅ TDD implemented
+- `goxel.open_file` - params: [path] ✅ TDD implemented (supports .gox, .vox, .obj, .ply, .png, .stl)
 - `goxel.save_file` - params: [path]
 - `goxel.export_file` - params: [path, format]
 
 ### Voxel Operations  
-- `goxel.add_voxels` - params: {voxels: [{position, color}]}
-- `goxel.remove_voxels` - params: {voxels: [{position}]}
-- `goxel.paint_voxels` - params: {voxels: [{position, color}]}
+- `goxel.add_voxels` - params: {voxels: [{position, color}]} ✅ TDD implemented
+- `goxel.remove_voxels` - params: {voxels: [{position}]} ✅ TDD implemented
+- `goxel.paint_voxels` - params: {voxels: [{position, color}]} ✅ TDD implemented
 
 ### Example
 ```python
@@ -157,6 +158,12 @@ touch tests/tdd/test_new_feature.c
 - Guide: `tests/tdd/TDD_WORKFLOW.md`
 - Quick Start: `tests/tdd/README.md`
 
+#### TDD Implementation Status
+- **JSON-RPC Methods**: 5 of 15 implemented with full TDD
+- **Test Coverage**: 77 tests, 100% passing
+- **Implemented**: create_project, open_file, add_voxels, remove_voxels, paint_voxels
+- **Remaining**: save_file, export_file, and 8 other methods
+
 ### Testing
 ```bash
 # Run TDD tests (required before commits)
@@ -178,7 +185,7 @@ print(s.recv(4096))
 ---
 
 **Version**: 15.0.0-dev  
-**Updated**: January 2025  
+**Updated**: February 2025  
 **Status**: Development - Not Production Ready
 
 ## Development Philosophy
