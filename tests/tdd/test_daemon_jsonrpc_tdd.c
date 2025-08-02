@@ -220,6 +220,65 @@ jsonrpc_response_t* handle_remove_voxels(jsonrpc_request_t* req) {
     return create_success_response(req->id, result_json);
 }
 
+jsonrpc_response_t* handle_paint_voxels(jsonrpc_request_t* req) {
+    if (!req) return NULL;
+    
+    if (strcmp(req->method, "goxel.paint_voxels") != 0) {
+        return create_error_response(req->id, "Invalid method");
+    }
+    
+    // Parse params to validate and count voxels
+    if (!req->params_json) {
+        return create_error_response(req->id, "Missing params");
+    }
+    
+    // Count voxels with both position and color
+    int voxel_count = 0;
+    const char* pos = req->params_json;
+    
+    // Check if there are any voxels in the array
+    const char* voxel_array = strstr(req->params_json, "\"voxels\"");
+    if (voxel_array) {
+        const char* array_start = strchr(voxel_array, '[');
+        if (array_start) {
+            const char* array_end = strchr(array_start, ']');
+            if (array_end && array_end - array_start <= 2) {
+                // Empty array
+                return create_error_response(req->id, "No voxels to paint");
+            }
+        }
+    }
+    
+    // Count voxels that have position
+    while ((pos = strstr(pos, "\"position\"")) != NULL) {
+        voxel_count++;
+        pos += 10;
+    }
+    
+    // Check if all voxels have colors
+    int color_count = 0;
+    pos = req->params_json;
+    while ((pos = strstr(pos, "\"color\"")) != NULL) {
+        color_count++;
+        pos += 7;
+    }
+    
+    if (voxel_count > color_count) {
+        return create_error_response(req->id, "Missing color for voxel");
+    }
+    
+    if (voxel_count == 0) {
+        return create_error_response(req->id, "No voxels to paint");
+    }
+    
+    // Create success response with count
+    char result_json[256];
+    snprintf(result_json, sizeof(result_json), 
+             "{\"painted\":true,\"count\":%d}", voxel_count);
+    
+    return create_success_response(req->id, result_json);
+}
+
 int test_parse_valid_request() {
     const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.create_project\",\"id\":42}";
     
@@ -420,6 +479,63 @@ int test_handle_remove_voxels_invalid_method() {
     return 1;
 }
 
+int test_handle_paint_voxels_single() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.paint_voxels\",\"params\":{\"voxels\":[{\"position\":[10,10,10],\"color\":\"#00FF00\"}]},\"id\":20}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_paint_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT_EQ(20, resp->id);
+    TEST_ASSERT(strstr(resp->result_json, "painted") != NULL, "Should indicate voxels were painted");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_paint_voxels_gradient() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.paint_voxels\",\"params\":{\"voxels\":[{\"position\":[0,0,0],\"color\":\"#FF0000\"},{\"position\":[0,0,1],\"color\":\"#FF7F00\"},{\"position\":[0,0,2],\"color\":\"#FFFF00\"},{\"position\":[0,0,3],\"color\":\"#00FF00\"},{\"position\":[0,0,4],\"color\":\"#0000FF\"}]},\"id\":21}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_paint_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT(strstr(resp->result_json, "\"count\":5") != NULL, "Should report 5 voxels painted");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_paint_voxels_no_color() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.paint_voxels\",\"params\":{\"voxels\":[{\"position\":[0,0,0]}]},\"id\":22}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_paint_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should be error for missing color");
+    TEST_ASSERT_STR_EQ("Missing color for voxel", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_paint_voxels_empty() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.paint_voxels\",\"params\":{\"voxels\":[]},\"id\":23}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_paint_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should be error for empty voxel array");
+    TEST_ASSERT_STR_EQ("No voxels to paint", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
 int main() {
     TEST_SUITE_BEGIN();
     
@@ -438,6 +554,10 @@ int main() {
     RUN_TEST(test_handle_remove_voxels_multiple);
     RUN_TEST(test_handle_remove_voxels_empty);
     RUN_TEST(test_handle_remove_voxels_invalid_method);
+    RUN_TEST(test_handle_paint_voxels_single);
+    RUN_TEST(test_handle_paint_voxels_gradient);
+    RUN_TEST(test_handle_paint_voxels_no_color);
+    RUN_TEST(test_handle_paint_voxels_empty);
     
     TEST_SUITE_END();
     
