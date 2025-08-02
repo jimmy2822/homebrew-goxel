@@ -87,7 +87,7 @@ EOF
 
 # Extract test functions from the compiled binary
 # On macOS, we need to recompile with the test file
-gcc -o run_one_test run_one_test.c test_daemon_integration_tdd.c tdd_framework.h -lm
+gcc -o run_one_test run_one_test.c test_daemon_integration_tdd.c -lm
 
 # Use gtimeout on macOS if available, otherwise use no timeout
 TIMEOUT_CMD=""

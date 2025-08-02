@@ -201,10 +201,13 @@ static char g_socket_path[256] = {0};
 static void cleanup_socket_on_exit(void) {
     if (strlen(g_socket_path) > 0) {
         LOG_INFO("Cleaning up socket on exit: %s", g_socket_path);
+        fprintf(stderr, "ATEXIT: Cleaning up socket: %s\n", g_socket_path);
         if (unlink(g_socket_path) == 0) {
             LOG_INFO("Socket file removed on exit");
+            fprintf(stderr, "ATEXIT: Socket removed successfully\n");
         } else if (errno != ENOENT) {
             LOG_W("Failed to remove socket file on exit: %s", strerror(errno));
+            fprintf(stderr, "ATEXIT: Failed to remove socket: %s\n", strerror(errno));
         }
     }
 }
@@ -215,12 +218,8 @@ static void signal_handler(int sig) {
         if (g_daemon) {
             LOG_INFO("Received signal %d, shutting down", sig);
             g_daemon->running = false;
-            
-            // For immediate cleanup on SIGTERM (forked daemon case)
-            if (sig == SIGTERM) {
-                cleanup_socket_on_exit();
-                _exit(0);
-            }
+            // Let the main loop handle cleanup properly
+            // The atexit handler will clean up the socket
         }
     }
 }
