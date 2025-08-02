@@ -1,6 +1,8 @@
 #include "tdd_framework.h"
 #include <string.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 typedef struct {
     char* data;
@@ -161,8 +163,29 @@ jsonrpc_response_t* handle_add_voxels(jsonrpc_request_t* req) {
         return create_error_response(req->id, "Invalid method");
     }
     
-    // TODO: Implement voxel addition logic
-    return NULL; // This will make the test fail (red light)
+    // Parse params to count voxels
+    if (!req->params_json) {
+        return create_error_response(req->id, "Missing params");
+    }
+    
+    // Simple voxel counting - look for "position" occurrences
+    int voxel_count = 0;
+    const char* pos = req->params_json;
+    while ((pos = strstr(pos, "\"position\"")) != NULL) {
+        voxel_count++;
+        pos += 10; // Move past "position"
+    }
+    
+    if (voxel_count == 0) {
+        return create_error_response(req->id, "No voxels to add");
+    }
+    
+    // Create success response with count
+    char result_json[256];
+    snprintf(result_json, sizeof(result_json), 
+             "{\"added\":true,\"count\":%d}", voxel_count);
+    
+    return create_success_response(req->id, result_json);
 }
 
 int test_parse_valid_request() {
