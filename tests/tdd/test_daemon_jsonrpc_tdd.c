@@ -69,6 +69,21 @@ jsonrpc_request_t* parse_jsonrpc_request(const char* json) {
                     strncpy(req->params_json, params_start, len);
                     req->params_json[len] = '\0';
                 }
+            } else if (*params_start == '[') {
+                const char* params_end = params_start + 1;
+                int bracket_count = 1;
+                while (bracket_count > 0 && *params_end) {
+                    if (*params_end == '[') bracket_count++;
+                    else if (*params_end == ']') bracket_count--;
+                    params_end++;
+                }
+                
+                if (bracket_count == 0) {
+                    size_t len = params_end - params_start;
+                    req->params_json = malloc(len + 1);
+                    strncpy(req->params_json, params_start, len);
+                    req->params_json[len] = '\0';
+                }
             }
         }
     }
@@ -275,6 +290,65 @@ jsonrpc_response_t* handle_paint_voxels(jsonrpc_request_t* req) {
     char result_json[256];
     snprintf(result_json, sizeof(result_json), 
              "{\"painted\":true,\"count\":%d}", voxel_count);
+    
+    return create_success_response(req->id, result_json);
+}
+
+jsonrpc_response_t* handle_open_file(jsonrpc_request_t* req) {
+    if (!req) return NULL;
+    
+    if (strcmp(req->method, "goxel.open_file") != 0) {
+        return create_error_response(req->id, "Invalid method");
+    }
+    
+    // Check if params exist
+    if (!req->params_json) {
+        return create_error_response(req->id, "Missing file path");
+    }
+    
+    // Extract file path from array params
+    char file_path[256] = {0};
+    const char* start = strchr(req->params_json, '\"');
+    if (start) {
+        start++; // Skip opening quote
+        const char* end = strchr(start, '\"');
+        if (end && end > start) {
+            size_t len = end - start;
+            if (len < sizeof(file_path)) {
+                strncpy(file_path, start, len);
+                file_path[len] = '\0';
+            }
+        }
+    }
+    
+    // Validate file path
+    if (strlen(file_path) == 0) {
+        return create_error_response(req->id, "Invalid file path");
+    }
+    
+    // Check file extension (support .gox, .vox, .obj, .ply)
+    const char* extensions[] = {".gox", ".vox", ".obj", ".ply", ".png", ".stl", NULL};
+    bool valid_extension = false;
+    
+    for (int i = 0; extensions[i] != NULL; i++) {
+        size_t ext_len = strlen(extensions[i]);
+        size_t path_len = strlen(file_path);
+        if (path_len >= ext_len) {
+            if (strcmp(file_path + path_len - ext_len, extensions[i]) == 0) {
+                valid_extension = true;
+                break;
+            }
+        }
+    }
+    
+    if (!valid_extension) {
+        return create_error_response(req->id, "Unsupported file format");
+    }
+    
+    // Create success response
+    char result_json[256];
+    snprintf(result_json, sizeof(result_json), 
+             "{\"opened\":true,\"file\":\"%s\"}", file_path);
     
     return create_success_response(req->id, result_json);
 }
@@ -536,6 +610,63 @@ int test_handle_paint_voxels_empty() {
     return 1;
 }
 
+int test_handle_open_file_valid() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.open_file\",\"params\":[\"/path/to/model.gox\"],\"id\":30}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_open_file(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT_EQ(30, resp->id);
+    TEST_ASSERT(strstr(resp->result_json, "opened") != NULL, "Should indicate file was opened");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_open_file_invalid_extension() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.open_file\",\"params\":[\"/path/to/model.txt\"],\"id\":31}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_open_file(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should fail for invalid extension");
+    TEST_ASSERT_STR_EQ("Unsupported file format", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_open_file_empty_path() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.open_file\",\"params\":[\"\"],\"id\":32}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_open_file(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should fail for empty path");
+    TEST_ASSERT_STR_EQ("Invalid file path", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_open_file_no_params() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.open_file\",\"id\":33}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_open_file(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should fail for missing params");
+    TEST_ASSERT_STR_EQ("Missing file path", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
 int main() {
     TEST_SUITE_BEGIN();
     
@@ -558,6 +689,10 @@ int main() {
     RUN_TEST(test_handle_paint_voxels_gradient);
     RUN_TEST(test_handle_paint_voxels_no_color);
     RUN_TEST(test_handle_paint_voxels_empty);
+    RUN_TEST(test_handle_open_file_valid);
+    RUN_TEST(test_handle_open_file_invalid_extension);
+    RUN_TEST(test_handle_open_file_empty_path);
+    RUN_TEST(test_handle_open_file_no_params);
     
     TEST_SUITE_END();
     
