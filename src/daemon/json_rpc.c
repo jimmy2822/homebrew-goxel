@@ -1393,7 +1393,9 @@ static json_rpc_response_t *handle_goxel_create_project(const json_rpc_request_t
     // QUICK FIX: Ensure global is synced
     goxel.image = g_goxel_context->image;
     
-    // Note: Don't release lock here - keep it until save/export/timeout
+    // Release lock after successful creation to allow subsequent requests
+    // This fixes the single-request-per-session limitation
+    project_lock_release();
     
     json_value *result_obj = json_object_new(5);
     json_object_push(result_obj, "success", json_boolean_new(1));

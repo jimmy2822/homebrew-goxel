@@ -195,6 +195,19 @@ typedef struct {
 
 // Global daemon pointer for signal handler
 static concurrent_daemon_t *g_daemon = NULL;
+static char g_socket_path[256] = {0};
+
+// Cleanup function for atexit
+static void cleanup_socket_on_exit(void) {
+    if (strlen(g_socket_path) > 0) {
+        LOG_INFO("Cleaning up socket on exit: %s", g_socket_path);
+        if (unlink(g_socket_path) == 0) {
+            LOG_INFO("Socket file removed on exit");
+        } else if (errno != ENOENT) {
+            LOG_W("Failed to remove socket file on exit: %s", strerror(errno));
+        }
+    }
+}
 
 // Signal handler for graceful shutdown
 static void signal_handler(int sig) {
@@ -202,6 +215,12 @@ static void signal_handler(int sig) {
         if (g_daemon) {
             LOG_INFO("Received signal %d, shutting down", sig);
             g_daemon->running = false;
+            
+            // For immediate cleanup on SIGTERM (forked daemon case)
+            if (sig == SIGTERM) {
+                cleanup_socket_on_exit();
+                _exit(0);
+            }
         }
     }
 }
@@ -1267,7 +1286,13 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     
     // Create socket server
     socket_server_config_t server_config = socket_server_default_config();
-    server_config.socket_path = get_persistent_socket_path(config->socket_path);
+    const char *socket_path = get_persistent_socket_path(config->socket_path);
+    server_config.socket_path = socket_path;
+    
+    // Store socket path globally for cleanup
+    strncpy(g_socket_path, socket_path, sizeof(g_socket_path) - 1);
+    g_socket_path[sizeof(g_socket_path) - 1] = '\0';
+    
     server_config.max_connections = config->max_connections;
     server_config.thread_per_client = false;
     server_config.thread_pool_size = config->worker_threads;
@@ -1511,6 +1536,9 @@ static int run_daemon(const program_config_t *prog_config)
     // Install signal handlers
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
+    
+    // Register atexit handler for socket cleanup
+    atexit(cleanup_socket_on_exit);
     
     // Set daemon as running
     pthread_mutex_lock(&daemon->state_mutex);
