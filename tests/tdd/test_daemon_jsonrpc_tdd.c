@@ -45,6 +45,32 @@ jsonrpc_request_t* parse_jsonrpc_request(const char* json) {
         }
     }
     
+    const char* params_start = strstr(json, "\"params\"");
+    if (params_start) {
+        params_start = strchr(params_start + 8, ':');
+        if (params_start) {
+            params_start++;
+            while (*params_start == ' ') params_start++;
+            
+            if (*params_start == '{') {
+                const char* params_end = params_start + 1;
+                int brace_count = 1;
+                while (brace_count > 0 && *params_end) {
+                    if (*params_end == '{') brace_count++;
+                    else if (*params_end == '}') brace_count--;
+                    params_end++;
+                }
+                
+                if (brace_count == 0) {
+                    size_t len = params_end - params_start;
+                    req->params_json = malloc(len + 1);
+                    strncpy(req->params_json, params_start, len);
+                    req->params_json[len] = '\0';
+                }
+            }
+        }
+    }
+    
     const char* id_start = strstr(json, "\"id\"");
     if (id_start) {
         id_start = strchr(id_start + 4, ':');
@@ -126,6 +152,17 @@ jsonrpc_response_t* handle_create_project(jsonrpc_request_t* req) {
     }
     
     return create_success_response(req->id, "{\"project_id\":\"test-123\"}");
+}
+
+jsonrpc_response_t* handle_add_voxels(jsonrpc_request_t* req) {
+    if (!req) return NULL;
+    
+    if (strcmp(req->method, "goxel.add_voxels") != 0) {
+        return create_error_response(req->id, "Invalid method");
+    }
+    
+    // TODO: Implement voxel addition logic
+    return NULL; // This will make the test fail (red light)
 }
 
 int test_parse_valid_request() {
@@ -228,6 +265,49 @@ int test_handle_create_project_wrong_method() {
     return 1;
 }
 
+int test_handle_add_voxels_single() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.add_voxels\",\"params\":{\"voxels\":[{\"position\":[0,0,0],\"color\":\"#FF0000\"}]},\"id\":1}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_add_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT_EQ(1, resp->id);
+    TEST_ASSERT(strstr(resp->result_json, "added") != NULL, "Should indicate voxels were added");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_add_voxels_multiple() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.add_voxels\",\"params\":{\"voxels\":[{\"position\":[0,0,0],\"color\":\"#FF0000\"},{\"position\":[1,0,0],\"color\":\"#00FF00\"},{\"position\":[2,0,0],\"color\":\"#0000FF\"}]},\"id\":2}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_add_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == true, "Should be successful");
+    TEST_ASSERT(strstr(resp->result_json, "\"count\":3") != NULL, "Should report 3 voxels added");
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
+int test_handle_add_voxels_empty_array() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.add_voxels\",\"params\":{\"voxels\":[]},\"id\":3}";
+    jsonrpc_request_t* req = parse_jsonrpc_request(json);
+    
+    jsonrpc_response_t* resp = handle_add_voxels(req);
+    TEST_ASSERT(resp != NULL, "Should get response");
+    TEST_ASSERT(resp->success == false, "Should be error for empty voxel array");
+    TEST_ASSERT_STR_EQ("No voxels to add", resp->error_message);
+    
+    free_jsonrpc_response(resp);
+    free_jsonrpc_request(req);
+    return 1;
+}
+
 int main() {
     TEST_SUITE_BEGIN();
     
@@ -239,6 +319,9 @@ int main() {
     RUN_TEST(test_serialize_error_response);
     RUN_TEST(test_handle_create_project_valid);
     RUN_TEST(test_handle_create_project_wrong_method);
+    RUN_TEST(test_handle_add_voxels_single);
+    RUN_TEST(test_handle_add_voxels_multiple);
+    RUN_TEST(test_handle_add_voxels_empty_array);
     
     TEST_SUITE_END();
     
