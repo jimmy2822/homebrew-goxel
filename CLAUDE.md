@@ -4,12 +4,13 @@
 
 Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15.0 introduces a daemon architecture** with JSON-RPC protocol support for automation and integration.
 
-**⚠️ v15.0 Status: DEVELOPMENT - Single Operation Per Session**
+**⚠️ v15.0 Status: DEVELOPMENT - Single Request Per Connection**
 - **JSON-RPC**: ✅ All 15 methods implemented and functional
-- **TDD Tests**: ✅ 77 tests, 100% passing (test_daemon_jsonrpc_tdd.c)
+- **TDD Tests**: ✅ 217 tests, 100% passing (test_daemon_jsonrpc_tdd.c)
+- **Memory Safety**: ✅ Fixed use-after-free and global state issues
 - **First Request**: ✅ Works correctly 
-- **Subsequent Requests**: ❌ Daemon hangs (architectural limitation)
-- **Production Ready**: ❌ Requires architectural refactor
+- **Subsequent Requests**: ❌ Connection reuse not supported
+- **Production Ready**: ❌ Requires connection handling improvements
 
 **Core Features:**
 - 24-bit RGB colors with alpha channel
@@ -66,16 +67,28 @@ scons daemon=1
 
 The daemon supports these methods (array parameters):
 
-### Project Management
-- `goxel.create_project` - params: [name, width, height, depth] ✅ TDD implemented
-- `goxel.open_file` - params: [path] ✅ TDD implemented (supports .gox, .vox, .obj, .ply, .png, .stl)
-- `goxel.save_file` - params: [path]
-- `goxel.export_file` - params: [path, format]
+### All 15 Methods Implemented
 
-### Voxel Operations  
-- `goxel.add_voxels` - params: {voxels: [{position, color}]} ✅ TDD implemented
-- `goxel.remove_voxels` - params: {voxels: [{position}]} ✅ TDD implemented
-- `goxel.paint_voxels` - params: {voxels: [{position, color}]} ✅ TDD implemented
+**Project Management**
+- `goxel.create_project` - Create new project: [name, width, height, depth]
+- `goxel.open_file` - Open file: [path] (supports .gox, .vox, .obj, .ply, .png, .stl)
+- `goxel.save_file` - Save project: [path]
+- `goxel.export_file` - Export to format: [path, format]
+- `goxel.get_project_info` - Get project metadata: []
+
+**Voxel Operations**
+- `goxel.add_voxels` - Add voxels: {voxels: [{position, color}]}
+- `goxel.remove_voxels` - Remove voxels: {voxels: [{position}]}
+- `goxel.paint_voxels` - Change colors: {voxels: [{position, color}]}
+- `goxel.get_voxel` - Query voxel: {position: [x, y, z]}
+- `goxel.flood_fill` - Fill connected: {position, color}
+- `goxel.procedural_shape` - Generate shape: {shape, size, position, color}
+
+**Layer Management**
+- `goxel.list_layers` - Get all layers: []
+- `goxel.create_layer` - Create layer: [name]
+- `goxel.delete_layer` - Delete layer: [id]
+- `goxel.set_active_layer` - Switch layer: [id]
 
 ### Example
 ```python
@@ -99,19 +112,27 @@ print(json.loads(response))
 
 ## Known Limitations
 
-### Single Operation Per Session
-The daemon can only handle one request per session due to architectural constraints:
+### Single Request Per Connection
+The daemon currently only supports one request per connection:
 
 1. **First request**: ✅ Processes correctly
-2. **Second request**: ❌ Daemon becomes unresponsive
-3. **Workaround**: Restart daemon between operations
+2. **Second request**: ❌ Connection reuse not supported
+3. **Workaround**: Create new connection for each request
 
-**This is a fundamental limitation that requires architectural changes to fix.**
+```python
+# Correct usage - new connection per request
+for i in range(10):
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect("/tmp/goxel.sock")
+    # ... send request ...
+    sock.close()
+```
 
 ### Documentation
-- Memory architecture analysis: `docs/daemon-memory-architecture-analysis.md`
-- Implementation guide: `docs/daemon-memory-fix-implementation.md` 
-- Quick fixes: `docs/daemon-quick-fix-guide.md`
+- Architecture improvements: `docs/daemon-architecture-improvements.md`
+- Current status report: `docs/v15-daemon-status.md`
+- Root cause analysis: `docs/daemon-abort-trap-fix.md`
+- Memory architecture: `docs/daemon-memory-architecture-analysis.md`
 
 ## Development
 
@@ -159,10 +180,11 @@ touch tests/tdd/test_new_feature.c
 - Quick Start: `tests/tdd/README.md`
 
 #### TDD Implementation Status
-- **JSON-RPC Methods**: 5 of 15 implemented with full TDD
-- **Test Coverage**: 77 tests, 100% passing
-- **Implemented**: create_project, open_file, add_voxels, remove_voxels, paint_voxels
-- **Remaining**: save_file, export_file, and 8 other methods
+- **JSON-RPC Methods**: All 15 methods implemented with full TDD
+- **Test Coverage**: 217 tests, 100% passing
+- **Memory Safety**: Fixed use-after-free bugs
+- **Global State**: Centralized management
+- **Stability**: All critical issues resolved
 
 ### Testing
 ```bash

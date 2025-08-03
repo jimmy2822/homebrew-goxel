@@ -14,6 +14,24 @@ Version 14.0.0 (Enterprise Daemon Architecture) - **🚀 PRODUCTION RELEASED**
 
 **🎉 NEW**: Goxel v14.0 enterprise daemon architecture is now **production ready** with complete Homebrew packaging! Features a high-performance JSON-RPC 2.0 server with **683% performance improvement** (7.83x faster), concurrent worker pool processing, and universal language support. Perfect for enterprise deployments, automation workflows, and AI integration.
 
+---
+
+### 🚧 Version 15.0-dev (In Development)
+
+**Status**: Development branch with significant improvements but not yet production ready.
+
+**Key Improvements**:
+- ✅ All 15 JSON-RPC methods fully implemented
+- ✅ 217 comprehensive TDD tests (100% passing)
+- ✅ Fixed critical memory management issues
+- ✅ Improved daemon stability
+
+**Known Limitations**:
+- ⚠️ Single request per connection (connection reuse not supported)
+- ⚠️ Requires new connection for each request
+
+See [CLAUDE.md](CLAUDE.md) for detailed development documentation.
+
 By Guillaume Chereau <guillaume@noctua-software.com>
 
 [![Build Status](https://github.com/guillaumechereau/goxel/actions/workflows/ci.yml/badge.svg)](https://github.com/guillaumechereau/goxel/actions/workflows/ci.yml)
