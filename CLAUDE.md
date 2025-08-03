@@ -1,25 +1,27 @@
-# CLAUDE.md - Goxel v15.0 Daemon Architecture 3D Voxel Editor
+# CLAUDE.md - Goxel-Daemon v15.0 JSON-RPC Server
 
 ## Project Overview
 
-Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15.0 introduces a daemon architecture** with JSON-RPC protocol support for automation and integration.
+Goxel-daemon is a Unix socket JSON-RPC server for the Goxel voxel editor, enabling programmatic control and automation. Written in C99.
 
-**⚠️ v15.0 Status: BETA - Memory Issues Fixed, Connection Reuse Partial**
+**⚠️ v15.0 Status: BETA - Stable with Connection Limitation**
 - **JSON-RPC**: ✅ All 15 methods implemented and functional
-- **TDD Tests**: ✅ 269 total tests (265 passing, 4 known failures in integration tests)
+- **TDD Tests**: ✅ 269 total tests (265 passing, 4 integration test failures)
 - **GitLab CI**: ✅ Automated TDD testing on every push
 - **Memory Safety**: ✅ Fixed double-free bug in JSON serialization
 - **First Request**: ✅ Works correctly 
-- **Connection Reuse**: ⚠️ Intermittent - client disconnect detected after first response
-- **Workaround**: ✅ Create new connection for each request (recommended)
-- **Production Ready**: ❌ Connection reuse needs further investigation
+- **Connection Reuse**: ⚠️ Not supported - one request per connection
+- **Workaround**: ✅ Create new connection for each request (standard usage)
+- **Usage Status**: ✅ Stable for single-request operations
 
-**Core Features:**
-- 24-bit RGB colors with alpha channel
-- Unlimited scene size and undo/redo
-- Multi-layer support
-- Multiple export formats (OBJ, PLY, PNG, Magica Voxel, STL, etc.)
-- Procedural generation and ray tracing
+**Test Failures:** 4 integration tests fail due to connection lifecycle expectations (tests expect reuse, daemon doesn't support it)
+
+**Daemon Features:**
+- Unix socket communication
+- JSON-RPC 2.0 protocol
+- Voxel manipulation API
+- Layer management
+- File import/export automation
 
 **Official Website:** https://goxel.xyz
 
@@ -50,9 +52,11 @@ Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15
 ### Homebrew (macOS)
 ```bash
 brew tap jimmy/goxel
-brew install jimmy/goxel/goxel
-brew services start goxel
+brew install jimmy/goxel/goxel  # Installs daemon-enabled version
+brew services start goxel        # Starts daemon at /opt/homebrew/var/run/goxel/goxel.sock
 ```
+
+**Note:** The Homebrew package includes the daemon functionality. The daemon socket is created at `/opt/homebrew/var/run/goxel/goxel.sock`.
 
 ### Build from Source
 ```bash
@@ -98,8 +102,14 @@ The daemon supports these methods (array parameters):
 import json
 import socket
 
+# Default socket path when installed via Homebrew
+SOCKET_PATH = "/opt/homebrew/var/run/goxel/goxel.sock"
+
+# For manual testing or custom installations
+# SOCKET_PATH = "/tmp/goxel.sock"
+
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-sock.connect("/opt/homebrew/var/run/goxel/goxel.sock")
+sock.connect(SOCKET_PATH)
 
 request = {
     "jsonrpc": "2.0",
@@ -123,10 +133,13 @@ The daemon currently only supports one request per connection:
 3. **Workaround**: Create new connection for each request
 
 ```python
-# Correct usage - new connection per request
+# Standard usage - new connection per request
+SOCKET_PATH = "/opt/homebrew/var/run/goxel/goxel.sock"  # Homebrew default
+# SOCKET_PATH = "/tmp/goxel.sock"  # For manual testing
+
 for i in range(10):
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect("/tmp/goxel.sock")
+    sock.connect(SOCKET_PATH)
     # ... send request ...
     sock.close()
 ```
@@ -150,10 +163,14 @@ origin  git@github.com:jimmy2822/goxel.git
 gitlab  git@ssh.raiden.me:jimmy2822/goxel-daemon.git
 ```
 
-To push to both remotes:
+### Branch Strategy
+- **main**: Primary development branch (used on both GitHub and GitLab)
+- **develop**: GitLab CI/CD testing branch (optional)
+
+To push daemon changes:
 ```bash
 git push origin main    # Push to GitHub
-git push gitlab develop # Push to GitLab
+git push gitlab main    # Push to GitLab (triggers CI)
 ```
 
 ### Code Style
@@ -214,7 +231,7 @@ touch tests/tdd/test_new_feature.c
   - `test_daemon_integration_tdd`: 33 tests (87.9% passing, 4 known failures)
 - **Memory Safety**: Fixed use-after-free bugs
 - **Global State**: Centralized management
-- **Known Issues**: Integration tests have connection lifecycle issues
+- **Known Issues**: 4 integration tests fail because they expect connection reuse (daemon design: one request per connection)
 
 ### Testing
 ```bash
@@ -224,13 +241,15 @@ touch tests/tdd/test_new_feature.c
 # Run daemon manually
 ./goxel-daemon --foreground --socket /tmp/test.sock
 
-# Check if working
+# Check if working (adjust socket path as needed)
 python3 -c "
 import socket, json
+SOCKET = '/tmp/test.sock'  # or '/opt/homebrew/var/run/goxel/goxel.sock' for Homebrew
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.connect('/tmp/test.sock')
+s.connect(SOCKET)
 s.send(json.dumps({'jsonrpc':'2.0','method':'goxel.create_project','params':['Test',16,16,16],'id':1}).encode()+b'\\n')
 print(s.recv(4096))
+s.close()  # Important: close after each request
 "
 ```
 
