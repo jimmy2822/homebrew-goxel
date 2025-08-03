@@ -44,16 +44,25 @@ The daemon is suitable for development and testing but not recommended for produ
 
 ## Root Cause Analysis
 
-The connection reuse crash is caused by:
-1. **Double-free bug**: `json_value_free()` called on already-freed memory in `json_rpc_free_request()`
-2. **Memory ownership issue**: JSON params data ownership unclear between parser and request structure
-3. **Fixed in code but not working**: The code shows params cloning was implemented but crash still occurs
+The connection reuse issue has been partially resolved:
 
+### Fixed Issues
+1. **Double-free bug**: Fixed by cloning JSON values in `create_params_json()` and response serialization
+   - Root cause: Functions were returning original pointers instead of clones
+   - When serialized JSON was freed, it would free data still referenced by request/response structures
+   - Fix location: `json_rpc.c` - modified `create_params_json()` and `json_rpc_serialize_response()`
+
+### Remaining Issues
+1. **Connection closes after first response**: Client disconnect detected via POLLHUP
+   - The daemon successfully processes requests but detects client disconnection
+   - Some connections work (intermittent success observed in logs)
+   - Python test clients appear to trigger socket closure
+   
 Technical details:
-- Crash location: `json_rpc.c:1034` in `json_rpc_free_request()`
-- Error: `malloc: *** error: pointer being freed was not allocated`
-- The JSON monitor thread correctly loops for multiple requests
-- Socket connection remains open after first response
+- Original crash location: `json_rpc.c:1034` in `json_rpc_free_request()` - NOW FIXED
+- New issue: `POLLHUP` detected in `json_client_monitor_thread` after first response
+- The JSON monitor thread correctly loops for multiple requests when connection stays open
+- Issue appears to be client-side socket handling or protocol mismatch
 
 ## Recommended Usage
 

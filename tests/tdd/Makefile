@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c99
 LDFLAGS = -lm
 
-TESTS = example_voxel_tdd test_daemon_jsonrpc_tdd test_daemon_integration_tdd
+TESTS = example_voxel_tdd test_daemon_jsonrpc_tdd test_daemon_integration_tdd test_connection_lifecycle
 
 all: $(TESTS) run_tests
 
@@ -14,6 +14,14 @@ test_daemon_jsonrpc_tdd: test_daemon_jsonrpc_tdd.c tdd_framework.h
 
 test_daemon_integration_tdd: test_daemon_integration_tdd.c tdd_framework.h
 	$(CC) $(CFLAGS) -o test_daemon_integration_tdd test_daemon_integration_tdd.c $(LDFLAGS)
+
+test_connection_lifecycle: test_connection_lifecycle.c tdd_framework.h test_log.c
+	$(CC) $(CFLAGS) -o test_connection_lifecycle test_connection_lifecycle.c \
+		../../src/daemon/socket_server.c \
+		../../src/daemon/json_socket_handler.c \
+		../../src/daemon/json_rpc.c \
+		test_log.c \
+		-lpthread $(LDFLAGS)
 
 run_tests: $(TESTS)
 	@echo "Running TDD tests..."

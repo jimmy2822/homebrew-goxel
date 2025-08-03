@@ -4,14 +4,14 @@
 
 Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15.0 introduces a daemon architecture** with JSON-RPC protocol support for automation and integration.
 
-**⚠️ v15.0 Status: DEVELOPMENT - Connection Reuse 90% Complete**
+**⚠️ v15.0 Status: DEVELOPMENT - Memory Issues Fixed, Connection Reuse Partial**
 - **JSON-RPC**: ✅ All 15 methods implemented and functional
 - **TDD Tests**: ✅ 217 tests, 100% passing (test_daemon_jsonrpc_tdd.c)
-- **Memory Safety**: ✅ Fixed use-after-free and global state issues
+- **Memory Safety**: ✅ Fixed double-free bug in JSON serialization
 - **First Request**: ✅ Works correctly 
-- **Connection Reuse**: ⚠️ Implemented but crashes on 2nd request (double-free bug)
-- **Workaround**: ✅ Create new connection for each request
-- **Production Ready**: ❌ Requires memory bug fix
+- **Connection Reuse**: ⚠️ Intermittent - client disconnect detected after first response
+- **Workaround**: ✅ Create new connection for each request (recommended)
+- **Production Ready**: ❌ Connection reuse needs further investigation
 
 **Core Features:**
 - 24-bit RGB colors with alpha channel
