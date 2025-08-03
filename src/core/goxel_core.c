@@ -120,34 +120,50 @@ int goxel_core_create_project(goxel_core_context_t *ctx, const char *name, int w
     
     // Clean up existing image if present
     if (ctx->image) {
-        // Check if global goxel.image points to the same image
-        extern goxel_t goxel;
-        if (goxel.image == ctx->image) {
-            // Clear the global reference to avoid use-after-free
-            goxel.image = NULL;
-        }
         image_delete(ctx->image);
         ctx->image = NULL;
     }
     
-    // Create new image
+    // Also clean up global goxel.image if it exists and create a new one
+    // This prevents double-free issues when context and global share references
+    extern goxel_t goxel;
+    if (goxel.image) {
+        image_delete(goxel.image);
+        goxel.image = NULL;
+    }
+    
+    // Create new image for context
     ctx->image = image_new();
     if (!ctx->image) return -1;
     
+    // Create new image for global goxel to maintain consistency
+    goxel.image = image_new();
+    if (!goxel.image) {
+        image_delete(ctx->image);
+        ctx->image = NULL;
+        return -1;
+    }
+    
     // Set project name if provided
     if (name) {
-        // Allocate memory for path string (path is char*, not char[])
+        // Set name on context image
         if (ctx->image->path) {
             free(ctx->image->path);
         }
         ctx->image->path = strdup(name);
+        
+        // Also set on global image for consistency
+        if (goxel.image->path) {
+            free(goxel.image->path);
+        }
+        goxel.image->path = strdup(name);
     }
     
     // Note: width, height, depth parameters are for initial project setup
     // In Goxel, projects can grow dynamically, so these are informational
     
-    // NOTE: We do NOT sync ctx->image to goxel.image here to avoid shared references
-    // The global sync should only happen temporarily when needed (e.g., during export)
+    // IMPORTANT: Context and global images are kept separate to avoid conflicts
+    // Operations should work on the appropriate image based on context
     
     return 0;
 }

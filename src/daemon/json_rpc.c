@@ -466,7 +466,8 @@ static json_value *create_params_json(const json_rpc_params_t *params)
         return NULL; // Omit params field for no parameters
     }
     
-    return params->data; // Return the stored JSON value
+    // Clone the params data to avoid double-free when serialized JSON is freed
+    return clone_json_value(params->data);
 }
 
 // ============================================================================
@@ -805,7 +806,9 @@ json_rpc_result_t json_rpc_serialize_response(const json_rpc_response_t *respons
     // Add result or error
     if (response->has_result) {
         if (response->result) {
-            json_object_push(root, "result", response->result);
+            // Clone result to avoid double-free when serialized JSON is freed
+            json_value *result_clone = clone_json_value(response->result);
+            json_object_push(root, "result", result_clone);
         } else {
             json_object_push(root, "result", json_null_new());
         }
@@ -817,7 +820,9 @@ json_rpc_result_t json_rpc_serialize_response(const json_rpc_response_t *respons
                         json_string_new(response->error.message ? response->error.message : ""));
         
         if (response->error.data) {
-            json_object_push(error_obj, "data", response->error.data);
+            // Clone error data to avoid double-free when serialized JSON is freed
+            json_value *error_data_clone = clone_json_value(response->error.data);
+            json_object_push(error_obj, "data", error_data_clone);
         }
         
         json_object_push(root, "error", error_obj);
@@ -1396,8 +1401,9 @@ static json_rpc_response_t *handle_goxel_create_project(const json_rpc_request_t
             sizeof(g_project_state.project_id) - 1);
     g_project_state.last_activity = time(NULL);
     
-    // QUICK FIX: Ensure global is synced
-    goxel.image = g_goxel_context->image;
+    // IMPORTANT: Do NOT sync goxel.image here as it can cause double-free
+    // The global goxel.image should remain independent from context->image
+    // Only sync when absolutely necessary for operations that require it
     
     // Release lock after successful creation to allow subsequent requests
     // This fixes the single-request-per-session limitation

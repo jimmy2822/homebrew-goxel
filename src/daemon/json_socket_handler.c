@@ -29,6 +29,7 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <sys/types.h>
 
 // ============================================================================
 // JSON SOCKET HANDLER IMPLEMENTATION
@@ -76,21 +77,53 @@ static int read_json_line(int fd, char *buffer, size_t max_size)
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // No data available
-                if (pos == 0) return -1;
+                if (pos == 0) {
+                    // No data read yet, return "no data"
+                    return -1;
+                }
                 // If we have a complete JSON object, return it
                 if (found_start && brace_count == 0 && bracket_count == 0) {
-                    break;
+                    buffer[pos] = '\0';
+                    return (int)pos;
                 }
-                // Otherwise wait a bit for more data
-                usleep(1000); // 1ms
-                continue;
+                // Partial message, need more data
+                return -1;
             }
             if (errno == EINTR) continue;
-            return -2; // Error
+            // Actual error
+            return -2;
         }
         
         if (n == 0) {
-            // Connection closed
+            // recv() returned 0 - for non-blocking sockets, need more checks
+            if (pos == 0) {
+                // No data read yet - use poll to check connection state
+                struct pollfd pfd;
+                pfd.fd = fd;
+                pfd.events = POLLIN | POLLHUP | POLLERR;
+                pfd.revents = 0;
+                
+                int poll_result = poll(&pfd, 1, 0); // Non-blocking poll
+                
+                if (poll_result > 0) {
+                    if (pfd.revents & (POLLHUP | POLLERR)) {
+                        // Connection truly closed or error
+                        return -3;
+                    }
+                }
+                
+                // Check socket error state
+                int error = 0;
+                socklen_t len = sizeof(error);
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error != 0) {
+                    // Socket has an error
+                    return -3;
+                }
+                
+                // Socket is still connected, just no data available
+                return -1;
+            }
+            // If we already read some data and now get 0, likely closed
             return -3;
         }
         
@@ -187,19 +220,39 @@ static void *json_client_monitor_thread(void *arg)
         
         if (poll_result == 0) continue; // Timeout
         
+        // Log poll events
+        if (pfd.revents & POLLHUP) {
+            LOG_I("Client %u: POLLHUP detected", data->client->id);
+            break;
+        }
+        if (pfd.revents & POLLERR) {
+            LOG_E("Client %u: POLLERR detected", data->client->id);
+            break;
+        }
+        if (pfd.revents & POLLNVAL) {
+            LOG_E("Client %u: POLLNVAL detected", data->client->id);
+            break;
+        }
+        
         // Read JSON message
         int len = read_json_line(data->client->fd, buffer, sizeof(buffer));
         
         if (len == -3) {
             // Connection closed
-            LOG_I("Client %u disconnected", data->client->id);
+            LOG_I("Client %u disconnected (connection closed)", data->client->id);
             break;
         }
         
         if (len == -2) {
             // Error
-            LOG_E("Read error from client %u: %s", data->client->id, strerror(errno));
+            LOG_E("Read error from client %u: %s", 
+                  data->client->id, strerror(errno));
             break;
+        }
+        
+        if (len == -1) {
+            // No data available - this is normal for non-blocking sockets
+            continue;
         }
         
         if (len == -4) {
@@ -303,15 +356,27 @@ static void *json_client_monitor_thread(void *arg)
         }
         
         socket_message_destroy(msg);
+        
+        // Log that we're continuing to wait for next message
+        LOG_I("Ready for next message from client %u", data->client->id);
     }
     
-    LOG_I("JSON client monitor stopped for client %u", data->client->id);
+    LOG_I("JSON client monitor stopped for client %u (loop exited)", data->client->id);
+    LOG_I("Loop exit reason: data->running=%d, monitor_running=%d", 
+          data->running, data->client->handler_data.json.monitor_running);
     
     // Mark monitor as not running
     data->client->handler_data.json.monitor_running = false;
     
-    // Disconnect client using public API
-    socket_server_disconnect_client(data->server, data->client);
+    // Only disconnect if there was an error or client disconnected
+    // Do NOT disconnect just because we exited the loop normally
+    if (data->running) {
+        LOG_I("Client %u appears to have disconnected", data->client->id);
+        // Disconnect client using public API
+        socket_server_disconnect_client(data->server, data->client);
+    } else {
+        LOG_I("Monitor thread stopping normally for client %u", data->client->id);
+    }
     
     // Clean up monitor data
     free(data);
