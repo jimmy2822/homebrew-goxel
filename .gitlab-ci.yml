@@ -1,0 +1,174 @@
+# GitLab CI Configuration for Goxel
+# Focuses on running TDD tests for quality assurance
+
+stages:
+  - build
+  - test
+
+# Default settings for all jobs
+default:
+  # Use Ubuntu latest as base image
+  image: ubuntu:22.04
+  
+  # Cache dependencies to speed up builds
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .apt-cache/
+      - ext_src/
+
+# Variables for all jobs
+variables:
+  # Debian frontend for non-interactive apt installs
+  DEBIAN_FRONTEND: noninteractive
+  # Use apt cache
+  APT_CACHE_DIR: "$CI_PROJECT_DIR/.apt-cache"
+
+# Setup common dependencies
+.setup_dependencies: &setup_dependencies
+  - apt-get update -qq
+  - mkdir -p $APT_CACHE_DIR
+  - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y -qq
+    build-essential
+    gcc
+    g++
+    make
+    scons
+    pkg-config
+    libglfw3-dev
+    libgtk-3-dev
+    libpng-dev
+    libpng16-16
+    git
+    libtre-dev
+    libglew-dev
+
+# Build job - ensure the project compiles
+build:daemon:
+  stage: build
+  before_script:
+    - *setup_dependencies
+  script:
+    - echo "🔨 Building Goxel daemon with TDD support..."
+    - scons mode=debug daemon=1
+  artifacts:
+    paths:
+      - goxel-daemon
+    expire_in: 1 hour
+
+# TDD Test job - run all TDD tests
+test:tdd:
+  stage: test
+  needs: ["build:daemon"]
+  before_script:
+    - *setup_dependencies
+    - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y -qq bc
+  script:
+    - echo "🧪 Running TDD Test Suite..."
+    - cd tests/tdd
+    - make clean
+    - make all
+    - chmod +x generate_junit_report.sh
+    - ./generate_junit_report.sh
+  artifacts:
+    when: always
+    reports:
+      junit: tests/tdd/test-results.xml
+    paths:
+      - tests/tdd/*.log
+      - tests/tdd/test-results.xml
+    expire_in: 1 week
+
+# Unit test job - run individual test categories
+test:daemon_jsonrpc:
+  stage: test
+  before_script:
+    - *setup_dependencies
+  script:
+    - echo "🧪 Running Daemon JSON-RPC Tests..."
+    - cd tests/tdd
+    - make clean
+    - make test_daemon_jsonrpc_tdd
+    - ./test_daemon_jsonrpc_tdd
+  allow_failure: false
+
+test:daemon_integration:
+  stage: test
+  before_script:
+    - *setup_dependencies
+  script:
+    - echo "🧪 Running Daemon Integration Tests..."
+    - cd tests/tdd
+    - make clean
+    - make test_daemon_integration_tdd
+    - ./test_daemon_integration_tdd
+  allow_failure: false
+
+test:connection_lifecycle:
+  stage: test
+  before_script:
+    - *setup_dependencies
+  script:
+    - echo "🧪 Running Connection Lifecycle Tests..."
+    - cd tests/tdd
+    - make clean
+    - make test_connection_lifecycle
+    - ./test_connection_lifecycle
+  allow_failure: false
+
+# Memory leak detection job (optional)
+test:valgrind:
+  stage: test
+  before_script:
+    - *setup_dependencies
+    - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y -qq valgrind
+  script:
+    - echo "🔍 Running memory leak detection..."
+    - cd tests/tdd
+    - make clean
+    - make all
+    - |
+      for test in example_voxel_tdd test_daemon_jsonrpc_tdd test_daemon_integration_tdd; do
+        echo "=== Checking $test for memory leaks ==="
+        valgrind --leak-check=full --error-exitcode=1 ./$test || true
+      done
+  allow_failure: true
+  when: manual
+
+# Coverage report (optional)
+test:coverage:
+  stage: test
+  before_script:
+    - *setup_dependencies
+    - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y -qq gcovr
+  script:
+    - echo "📊 Generating test coverage report..."
+    - cd tests/tdd
+    - make clean
+    - make CFLAGS="-Wall -Wextra -g -std=c99 --coverage" LDFLAGS="-lm --coverage" all
+    - make run_tests
+    - gcovr --xml-pretty --exclude-unreachable-branches --print-summary -o coverage.xml --root ${CI_PROJECT_DIR}
+  coverage: /^\s*lines:\s*\d+.\d+\%/
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: tests/tdd/coverage.xml
+    expire_in: 1 week
+  allow_failure: true
+  when: manual
+
+# Quick sanity check - runs on merge requests only
+test:quick:
+  stage: test
+  only:
+    - merge_requests
+  before_script:
+    - *setup_dependencies
+  script:
+    - echo "⚡ Quick TDD sanity check..."
+    - cd tests/tdd
+    - make clean
+    - make example_voxel_tdd
+    - ./example_voxel_tdd
+    - echo "✅ Quick test passed!"
