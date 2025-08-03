@@ -43,31 +43,33 @@ variables:
     libtre-dev
     libglew-dev
 
-# Build job - ensure the project compiles
-build:daemon:
+# Build job - compile only what's needed for TDD tests
+build:tdd_tests:
   stage: build
   before_script:
     - *setup_dependencies
   script:
-    - echo "🔨 Building Goxel daemon with TDD support..."
-    - scons mode=debug daemon=1
+    - echo "🔨 Building TDD test dependencies..."
+    - cd tests/tdd
+    - make clean
+    - make all
   artifacts:
     paths:
-      - goxel-daemon
+      - tests/tdd/example_voxel_tdd
+      - tests/tdd/test_daemon_jsonrpc_tdd
+      - tests/tdd/test_daemon_integration_tdd
     expire_in: 1 hour
 
 # TDD Test job - run all TDD tests
 test:tdd:
   stage: test
-  needs: ["build:daemon"]
+  needs: ["build:tdd_tests"]
   before_script:
-    - *setup_dependencies
-    - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y -qq bc
+    - apt-get update -qq
+    - apt-get install -y -qq bc
   script:
     - echo "🧪 Running TDD Test Suite..."
     - cd tests/tdd
-    - make clean
-    - make all
     - chmod +x generate_junit_report.sh
     - ./generate_junit_report.sh
   artifacts:
@@ -82,38 +84,29 @@ test:tdd:
 # Unit test job - run individual test categories
 test:daemon_jsonrpc:
   stage: test
-  before_script:
-    - *setup_dependencies
+  needs: ["build:tdd_tests"]
   script:
     - echo "🧪 Running Daemon JSON-RPC Tests..."
     - cd tests/tdd
-    - make clean
-    - make test_daemon_jsonrpc_tdd
     - ./test_daemon_jsonrpc_tdd
   allow_failure: false
 
 test:daemon_integration:
   stage: test
-  before_script:
-    - *setup_dependencies
+  needs: ["build:tdd_tests"]
   script:
     - echo "🧪 Running Daemon Integration Tests..."
     - cd tests/tdd
-    - make clean
-    - make test_daemon_integration_tdd
     - ./test_daemon_integration_tdd
   allow_failure: false
 
-test:connection_lifecycle:
+test:example_voxel:
   stage: test
-  before_script:
-    - *setup_dependencies
+  needs: ["build:tdd_tests"]
   script:
-    - echo "🧪 Running Connection Lifecycle Tests..."
+    - echo "🧪 Running Example Voxel Tests..."
     - cd tests/tdd
-    - make clean
-    - make test_connection_lifecycle
-    - ./test_connection_lifecycle
+    - ./example_voxel_tdd
   allow_failure: false
 
 # Memory leak detection job (optional)

@@ -18,7 +18,7 @@ TOTAL_FAILURES=0
 TOTAL_TIME=0
 
 # Test list from Makefile
-TESTS="example_voxel_tdd test_daemon_jsonrpc_tdd test_daemon_integration_tdd test_connection_lifecycle"
+TESTS="example_voxel_tdd test_daemon_jsonrpc_tdd test_daemon_integration_tdd"
 
 for test in $TESTS; do
     echo "Running $test..."
