@@ -439,13 +439,21 @@ static json_rpc_result_t parse_params_from_json(json_value *json_params,
     
     if (json_params->type == json_array) {
         params->type = JSON_RPC_PARAMS_ARRAY;
-        params->data = json_params;
+        // Clone the params to avoid use-after-free when root is freed
+        params->data = clone_json_value(json_params);
+        if (!params->data) {
+            return JSON_RPC_ERROR_OUT_OF_MEMORY;
+        }
         return JSON_RPC_SUCCESS;
     }
     
     if (json_params->type == json_object) {
         params->type = JSON_RPC_PARAMS_OBJECT;
-        params->data = json_params;
+        // Clone the params to avoid use-after-free when root is freed
+        params->data = clone_json_value(json_params);
+        if (!params->data) {
+            return JSON_RPC_ERROR_OUT_OF_MEMORY;
+        }
         return JSON_RPC_SUCCESS;
     }
     
@@ -550,18 +558,8 @@ json_rpc_result_t json_rpc_parse_request(const char *json_str,
         req->is_notification = true;
     }
     
-    // Clone parameters to avoid use-after-free
-    if (req->params.data) {
-        json_value *cloned_params = clone_json_value(req->params.data);
-        if (!cloned_params) {
-            result = JSON_RPC_ERROR_OUT_OF_MEMORY;
-            goto cleanup;
-        }
-        req->params.data = cloned_params;
-    }
-    
     *request = req;
-    json_value_free(root); // Now safe to free root since we cloned the needed parts
+    json_value_free(root); // Now safe to free root since we cloned params in parse_params_from_json
     return JSON_RPC_SUCCESS;
     
 cleanup:
@@ -1024,16 +1022,24 @@ void json_rpc_free_request(json_rpc_request_t *request)
 {
     if (!request) return;
     
+    LOG_D("Freeing request: method=%s, params.type=%d, params.data=%p", 
+          request->method ? request->method : "(null)", 
+          request->params.type, request->params.data);
+    
     SAFE_FREE(request->method);
     
     // Free parameters data if owned
     if (request->params.data) {
+        LOG_D("About to free params.data at %p", request->params.data);
         json_value_free(request->params.data);
+        LOG_D("Freed params.data");
     }
     
     json_rpc_free_id(&request->id);
     
+    LOG_D("About to free request structure at %p", request);
     free(request);
+    LOG_D("Request freed successfully");
 }
 
 void json_rpc_free_response(json_rpc_response_t *response)

@@ -38,7 +38,7 @@
 #include <signal.h>
 
 // Global goxel instance required by core functions
-goxel_t goxel;
+extern goxel_t goxel;
 
 // Forward declarations
 static int64_t get_current_time_us(void);
@@ -870,8 +870,12 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
                                                socket_client_t *client,
                                                const socket_message_t *message)
 {
+    LOG_I("handle_jsonrpc_message called with daemon=%p, client=%p, message=%p", 
+          daemon, client, message);
+    
     // Existing JSON-RPC handling logic from the original handle_socket_message
     if (!daemon || !daemon->running || !message || !message->data) {
+        LOG_W("Invalid parameters to handle_jsonrpc_message");
         return NULL;
     }
     
@@ -1043,16 +1047,27 @@ static socket_message_t *handle_jsonrpc_message(concurrent_daemon_t *daemon,
     }
     
     // Clean up the request since we processed synchronously
+    LOG_I("About to free request");
     json_rpc_free_request(rpc_request);
+    LOG_I("Request freed successfully");
     
     // Update statistics
+    LOG_I("About to update statistics");
     pthread_mutex_lock(&daemon->state_mutex);
     daemon->stats.requests_processed++;
     pthread_mutex_unlock(&daemon->state_mutex);
+    LOG_I("Statistics updated");
     
     if (response_msg) {
         LOG_I("Returning response_msg: %p (data=%p, length=%u)", 
               response_msg, response_msg->data, response_msg->length);
+        
+        // Validate response_msg before returning
+        if (response_msg->length > 0 && response_msg->data == NULL) {
+            LOG_E("Invalid response_msg: length=%u but data=NULL", response_msg->length);
+            socket_message_destroy(response_msg);
+            return NULL;
+        }
     } else {
         LOG_I("Returning NULL response_msg");
     }

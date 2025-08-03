@@ -103,9 +103,12 @@ texture_t *texture_new_image(const char *path, int flags)
 // PNG functionality is provided by STB image library in core/utils/img.c
 // No stubs needed - STB implementation works without libpng dependency
 
-// Global goxel instance for headless mode
-goxel_t goxel;
+// Global goxel instance is defined in goxel.c
+extern goxel_t goxel;
 
+// This function is now defined in goxel.c
+// We should not redefine it here to avoid duplicate symbols
+#if 0
 void goxel_init(void)
 {
     memset(&goxel, 0, sizeof(goxel));
@@ -126,7 +129,10 @@ void goxel_init(void)
     // Initialize basic renderer
     memset(&goxel.rend, 0, sizeof(goxel.rend));
 }
+#endif
 
+// This function is now defined in goxel_globals.c
+#if 0
 void goxel_release(void)
 {
     if (goxel.image) {
@@ -135,7 +141,10 @@ void goxel_release(void)
     }
     // Note: palette is not managed by us in headless mode
 }
+#endif
 
+// This function is now defined in goxel.c
+#if 0
 void goxel_reset(void)
 {
     if (goxel.image) {
@@ -143,6 +152,7 @@ void goxel_reset(void)
     }
     goxel.image = image_new();
 }
+#endif
 
 // Minimal hint system for headless mode
 void goxel_add_hint(int flags, const char *title, const char *msg)
