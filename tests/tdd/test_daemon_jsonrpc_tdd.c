@@ -1,8 +1,22 @@
+#define _GNU_SOURCE  // For strdup
 #include "tdd_framework.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+// Implement strdup if not available
+#ifndef strdup
+char* strdup(const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char* copy = malloc(len);
+    if (copy) {
+        memcpy(copy, s, len);
+    }
+    return copy;
+}
+#endif
 
 typedef struct {
     char* data;
@@ -142,6 +156,11 @@ jsonrpc_response_t* create_success_response(int id, const char* result) {
         resp->result_json = strdup("\"success\"");
     }
     
+    if (!resp->result_json) {
+        free(resp);
+        return NULL;
+    }
+    
     return resp;
 }
 
@@ -153,6 +172,11 @@ jsonrpc_response_t* create_error_response(int id, const char* error) {
     resp->id = id;
     resp->result_json = NULL;
     resp->error_message = strdup(error);
+    
+    if (!resp->error_message) {
+        free(resp);
+        return NULL;
+    }
     
     return resp;
 }

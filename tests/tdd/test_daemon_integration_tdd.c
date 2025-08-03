@@ -1,3 +1,4 @@
+#define _GNU_SOURCE  // For usleep
 #include "tdd_framework.h"
 #include <sys/socket.h>
 #include <sys/un.h>

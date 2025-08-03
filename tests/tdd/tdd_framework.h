@@ -44,7 +44,14 @@ static test_stats_t g_test_stats = {0};
 
 #define TEST_ASSERT_STR_EQ(expected, actual) do { \
     g_test_stats.total_tests++; \
-    if (strcmp(expected, actual) != 0) { \
+    if ((expected) == NULL && (actual) == NULL) { \
+        g_test_stats.passed_tests++; \
+    } else if ((expected) == NULL || (actual) == NULL) { \
+        g_test_stats.failed_tests++; \
+        printf(RED "✗ FAIL" RESET " %s:%d - Expected '%s', got '%s'\n", __FILE__, __LINE__, \
+               (expected) ? (expected) : "NULL", (actual) ? (actual) : "NULL"); \
+        return 0; \
+    } else if (strcmp(expected, actual) != 0) { \
         g_test_stats.failed_tests++; \
         printf(RED "✗ FAIL" RESET " %s:%d - Expected '%s', got '%s'\n", __FILE__, __LINE__, expected, actual); \
         return 0; \
