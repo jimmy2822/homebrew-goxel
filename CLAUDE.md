@@ -4,9 +4,10 @@
 
 Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15.0 introduces a daemon architecture** with JSON-RPC protocol support for automation and integration.
 
-**⚠️ v15.0 Status: DEVELOPMENT - Memory Issues Fixed, Connection Reuse Partial**
+**⚠️ v15.0 Status: BETA - Memory Issues Fixed, Connection Reuse Partial**
 - **JSON-RPC**: ✅ All 15 methods implemented and functional
-- **TDD Tests**: ✅ 217 tests, 100% passing (test_daemon_jsonrpc_tdd.c)
+- **TDD Tests**: ✅ 269 total tests (265 passing, 4 known failures in integration tests)
+- **GitLab CI**: ✅ Automated TDD testing on every push
 - **Memory Safety**: ✅ Fixed double-free bug in JSON serialization
 - **First Request**: ✅ Works correctly 
 - **Connection Reuse**: ⚠️ Intermittent - client disconnect detected after first response
@@ -40,7 +41,8 @@ Goxel is a cross-platform 3D voxel editor written primarily in C99. **Version 15
 │   └── gui/            # UI panels
 ├── docs/               # Documentation
 ├── tests/              # Test suites
-└── homebrew-goxel/     # macOS package
+├── homebrew-goxel/     # macOS package
+└── .gitlab-ci.yml      # GitLab CI configuration
 ```
 
 ## Installation
@@ -137,6 +139,23 @@ for i in range(10):
 
 ## Development
 
+### Git Remotes
+The project is hosted on both GitHub and GitLab:
+
+```bash
+# GitHub (main repository)
+origin  git@github.com:jimmy2822/goxel.git
+
+# GitLab (CI/CD and daemon development)
+gitlab  git@ssh.raiden.me:jimmy2822/goxel-daemon.git
+```
+
+To push to both remotes:
+```bash
+git push origin main    # Push to GitHub
+git push gitlab develop # Push to GitLab
+```
+
 ### Code Style
 - C99 with GNU extensions
 - 4 spaces indentation
@@ -154,12 +173,19 @@ for i in range(10):
 
 #### Quick Start
 ```bash
-# Run all TDD tests
+# Run all TDD tests locally
 ./tests/run_tdd_tests.sh
 
 # Run specific TDD tests
 cd tests/tdd
-make
+make clean
+make all
+./example_voxel_tdd           # Basic voxel tests
+./test_daemon_jsonrpc_tdd     # JSON-RPC protocol tests
+./test_daemon_integration_tdd # Integration tests (has known failures)
+
+# Generate JUnit report (like CI does)
+./generate_junit_report.sh
 ```
 
 #### Writing New Features with TDD
@@ -182,10 +208,13 @@ touch tests/tdd/test_new_feature.c
 
 #### TDD Implementation Status
 - **JSON-RPC Methods**: All 15 methods implemented with full TDD
-- **Test Coverage**: 217 tests, 100% passing
+- **Test Coverage**: 269 total tests across 3 test suites
+  - `example_voxel_tdd`: 19 tests (100% passing)
+  - `test_daemon_jsonrpc_tdd`: 217 tests (100% passing)
+  - `test_daemon_integration_tdd`: 33 tests (87.9% passing, 4 known failures)
 - **Memory Safety**: Fixed use-after-free bugs
 - **Global State**: Centralized management
-- **Stability**: All critical issues resolved
+- **Known Issues**: Integration tests have connection lifecycle issues
 
 ### Testing
 ```bash
@@ -205,11 +234,43 @@ print(s.recv(4096))
 "
 ```
 
+### GitLab CI
+
+**The project uses GitLab CI for automated testing. Every push triggers TDD tests.**
+
+#### Checking CI Status
+```bash
+# Configure GitLab host (required for glab CLI)
+export GITLAB_HOST=ssh.raiden.me
+
+# List recent pipelines
+glab ci list
+
+# Check current branch CI status
+glab ci status
+
+# View specific pipeline details (use pipeline ID from list)
+glab api projects/jimmy2822%2Fgoxel-daemon/pipelines/<PIPELINE_ID>
+
+# Get job logs (use job ID from pipeline details)
+glab api projects/jimmy2822%2Fgoxel-daemon/jobs/<JOB_ID>/trace
+
+# Open pipeline in web browser
+glab ci view <PIPELINE_ID> --web
+```
+
+#### CI Configuration
+- **File**: `.gitlab-ci.yml`
+- **Stages**: build, test
+- **Tests**: TDD tests run automatically
+- **Reports**: JUnit format test results
+- **Documentation**: `tests/tdd/GITLAB_CI_SETUP.md`
+
 ---
 
-**Version**: 15.0.0-dev  
-**Updated**: February 2025  
-**Status**: Development - Not Production Ready
+**Version**: 15.0.0  
+**Updated**: August 2025  
+**Status**: Beta - Automated Testing via GitLab CI
 
 ## Development Philosophy
 
@@ -221,3 +282,12 @@ All new features and bug fixes MUST be developed using Test-Driven Development. 
 - Built-in regression testing
 
 **No code will be merged without accompanying tests.**
+
+### Pre-commit Checklist
+Before committing any changes:
+1. **Run TDD tests**: `./tests/run_tdd_tests.sh`
+2. **Run lint/typecheck** (if provided): Ask user for the command
+3. **Check CI status**: Ensure GitLab CI passes
+4. **Update CLAUDE.md**: If making significant changes
+
+**IMPORTANT**: When completing tasks, always run lint and typecheck commands if they were provided. If you don't know the commands, ask the user and suggest adding them to this file.
