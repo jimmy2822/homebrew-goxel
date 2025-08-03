@@ -391,7 +391,14 @@ void socket_message_destroy(socket_message_t *message)
 {
     if (!message) return;
     
+    // Debug logging
+    if (message->data) {
+        LOG_D("Destroying message: id=%u, length=%u, data=%p", 
+              message->id, message->length, message->data);
+    }
+    
     SAFE_FREE(message->data);
+    memset(message, 0, sizeof(socket_message_t)); // Clear memory to catch use-after-free
     free(message);
 }
 

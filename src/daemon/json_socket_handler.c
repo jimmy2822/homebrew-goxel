@@ -250,6 +250,17 @@ static void *json_client_monitor_thread(void *arg)
             );
             
             LOG_I("Message handler returned: %p", response);
+            if (response) {
+                LOG_I("Response message: id=%u, type=%u, length=%u, data=%p", 
+                      response->id, response->type, response->length, response->data);
+                
+                // Validate response structure
+                if (response->length > 0 && response->data == NULL) {
+                    LOG_E("Invalid response: length=%u but data=NULL", response->length);
+                    socket_message_destroy(response);
+                    response = NULL;
+                }
+            }
             fflush(stdout);
             fflush(stderr);
             if (response) {
@@ -259,6 +270,9 @@ static void *json_client_monitor_thread(void *arg)
                     // Note: response->data should already contain the JSON string
                     LOG_I("Sending response to client %u: %.*s", data->client->id, 
                           (int)response->length, response->data);
+                    
+                    // Debug: Log fd and response details
+                    LOG_I("Client fd=%d, response length=%u", data->client->fd, response->length);
                           
                     ssize_t sent = send(data->client->fd, response->data, response->length, MSG_NOSIGNAL);
                     if (sent < 0) {
