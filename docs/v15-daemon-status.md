@@ -17,8 +17,8 @@ The Goxel v15.0 daemon implementation provides a JSON-RPC interface for programm
 - Documentation created
 
 ### ⚠️ Known Issues
-1. **Single Request Limitation**: After processing one request, subsequent requests on the same connection may hang
-2. **Response Delivery**: Some timing issues with response delivery to clients
+1. **Connection Reuse Bug**: Connection reuse is implemented but daemon crashes on 2nd request due to double-free in JSON memory management
+2. **Single Request Workaround**: Currently requires new connection for each request until memory bug is fixed
 3. **Concurrent Access**: While the architecture supports concurrency, the global state model limits true parallel processing
 
 ### ❌ Not Production Ready
@@ -33,19 +33,27 @@ The daemon is suitable for development and testing but not recommended for produ
 - Processing the request
 - Generating a response
 - Basic error handling
+- JSON monitor thread stays alive for multiple requests
+- Socket remains open after first response
 
 ### What Doesn't Work Reliably
-- Multiple requests per connection
+- Multiple requests per connection (crashes on 2nd request)
 - High-concurrency scenarios
 - Long-running connections
-- Connection reuse
+- Connection reuse (implemented but unstable)
 
 ## Root Cause Analysis
 
-The single-request limitation appears to be related to:
-1. State management between requests
-2. Socket handling in the monitoring threads
-3. Potential deadlocks in the request processing pipeline
+The connection reuse crash is caused by:
+1. **Double-free bug**: `json_value_free()` called on already-freed memory in `json_rpc_free_request()`
+2. **Memory ownership issue**: JSON params data ownership unclear between parser and request structure
+3. **Fixed in code but not working**: The code shows params cloning was implemented but crash still occurs
+
+Technical details:
+- Crash location: `json_rpc.c:1034` in `json_rpc_free_request()`
+- Error: `malloc: *** error: pointer being freed was not allocated`
+- The JSON monitor thread correctly loops for multiple requests
+- Socket connection remains open after first response
 
 ## Recommended Usage
 

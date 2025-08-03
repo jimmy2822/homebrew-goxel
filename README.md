@@ -25,12 +25,17 @@ Version 14.0.0 (Enterprise Daemon Architecture) - **🚀 PRODUCTION RELEASED**
 - ✅ 217 comprehensive TDD tests (100% passing)
 - ✅ Fixed critical memory management issues
 - ✅ Improved daemon stability
+- ✅ Connection reuse architecture implemented (90% complete)
 
 **Known Limitations**:
-- ⚠️ Single request per connection (connection reuse not supported)
-- ⚠️ Requires new connection for each request
+- ⚠️ Connection reuse works but daemon crashes on 2nd request (memory bug)
+- ⚠️ Requires new connection for each request until crash fix is deployed
+- ⚠️ No concurrent request support yet
 
-See [CLAUDE.md](CLAUDE.md) for detailed development documentation.
+**Documentation**:
+- [CLAUDE.md](CLAUDE.md) - Development guide
+- [Connection Reuse Architecture](docs/daemon-connection-reuse-architecture.md)
+- [Connection Reuse Status](docs/daemon-connection-reuse-status.md)
 
 By Guillaume Chereau <guillaume@noctua-software.com>
 
