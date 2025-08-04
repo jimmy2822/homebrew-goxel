@@ -149,6 +149,9 @@ struct socket_client {
         struct {
             pthread_t monitor_thread;
             bool monitor_running;
+            char read_buffer[8192];     /**< Read buffer for JSON parsing */
+            size_t read_buffer_pos;     /**< Current position in read buffer */
+            size_t read_buffer_len;     /**< Length of data in read buffer */
         } json;
     } handler_data;                 /**< Protocol-specific handler data */
 };

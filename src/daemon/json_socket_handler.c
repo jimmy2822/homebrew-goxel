@@ -60,11 +60,16 @@ void json_socket_set_handler(socket_message_handler_t handler, void *user_data)
 /**
  * Read raw JSON from socket.
  * Supports both newline-delimited and complete JSON object detection.
+ * Uses buffered reading to avoid busy loops and high CPU usage.
  */
-static int read_json_line(int fd, char *buffer, size_t max_size)
+static int read_json_line(socket_client_t *client, char *buffer, size_t max_size)
 {
+    int fd = client->fd;
+    char *read_buffer = client->handler_data.json.read_buffer;
+    size_t *read_buffer_pos = &client->handler_data.json.read_buffer_pos;
+    size_t *read_buffer_len = &client->handler_data.json.read_buffer_len;
+    
     size_t pos = 0;
-    char c;
     int brace_count = 0;
     int bracket_count = 0;
     bool in_string = false;
@@ -72,108 +77,117 @@ static int read_json_line(int fd, char *buffer, size_t max_size)
     bool found_start = false;
     
     while (pos < max_size - 1) {
-        ssize_t n = recv(fd, &c, 1, 0);
-        
-        if (n < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // No data available
-                if (pos == 0) {
-                    // No data read yet, return "no data"
+        // Fill read buffer if empty
+        if (*read_buffer_pos >= *read_buffer_len) {
+            ssize_t n = recv(fd, read_buffer, sizeof(client->handler_data.json.read_buffer), MSG_DONTWAIT);
+            
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // No data available
+                    if (pos == 0) {
+                        // No data read yet, return "no data"
+                        return -1;
+                    }
+                    // If we have a complete JSON object, return it
+                    if (found_start && brace_count == 0 && bracket_count == 0) {
+                        buffer[pos] = '\0';
+                        return (int)pos;
+                    }
+                    // Partial message, need more data
                     return -1;
                 }
-                // If we have a complete JSON object, return it
-                if (found_start && brace_count == 0 && bracket_count == 0) {
-                    buffer[pos] = '\0';
-                    return (int)pos;
+                if (errno == EINTR) {
+                    *read_buffer_pos = 0;
+                    *read_buffer_len = 0;
+                    continue;
                 }
-                // Partial message, need more data
-                return -1;
+                // Actual error
+                return -2;
             }
-            if (errno == EINTR) continue;
-            // Actual error
-            return -2;
-        }
-        
-        if (n == 0) {
-            // recv() returned 0 - for non-blocking sockets, need more checks
-            if (pos == 0) {
-                // No data read yet - use poll to check connection state
-                struct pollfd pfd;
-                pfd.fd = fd;
-                pfd.events = POLLIN | POLLHUP | POLLERR;
-                pfd.revents = 0;
-                
-                int poll_result = poll(&pfd, 1, 0); // Non-blocking poll
-                
-                if (poll_result > 0) {
-                    if (pfd.revents & (POLLHUP | POLLERR)) {
-                        // Connection truly closed or error
+            
+            if (n == 0) {
+                // Connection closed
+                if (pos == 0) {
+                    // No data read yet - check if truly closed
+                    struct pollfd pfd;
+                    pfd.fd = fd;
+                    pfd.events = POLLIN | POLLHUP | POLLERR;
+                    pfd.revents = 0;
+                    
+                    int poll_result = poll(&pfd, 1, 0);
+                    if (poll_result > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
                         return -3;
                     }
+                    
+                    // Check socket error state
+                    int error = 0;
+                    socklen_t len = sizeof(error);
+                    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error != 0) {
+                        return -3;
+                    }
+                    
+                    return -1;
                 }
-                
-                // Check socket error state
-                int error = 0;
-                socklen_t len = sizeof(error);
-                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error != 0) {
-                    // Socket has an error
-                    return -3;
-                }
-                
-                // Socket is still connected, just no data available
-                return -1;
+                // If we already read some data and now get 0, likely closed
+                return -3;
             }
-            // If we already read some data and now get 0, likely closed
-            return -3;
+            
+            *read_buffer_pos = 0;
+            *read_buffer_len = n;
         }
         
-        // Skip leading whitespace
-        if (!found_start && (c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
-            continue;
-        }
-        
-        buffer[pos++] = c;
-        
-        // Track JSON structure
-        if (!in_string && !escape_next) {
-            if (c == '{') {
-                found_start = true;
-                brace_count++;
-            } else if (c == '}') {
-                brace_count--;
-                if (brace_count == 0 && bracket_count == 0 && found_start) {
-                    buffer[pos] = '\0';
-                    return (int)pos;
-                }
-            } else if (c == '[') {
-                found_start = true;
-                bracket_count++;
-            } else if (c == ']') {
-                bracket_count--;
-                if (brace_count == 0 && bracket_count == 0 && found_start) {
-                    buffer[pos] = '\0';
-                    return (int)pos;
-                }
-            } else if (c == '"') {
-                in_string = true;
-            } else if (c == '\n' && !found_start) {
-                // Empty line before JSON
-                pos = 0;
+        // Process buffered data
+        while (*read_buffer_pos < *read_buffer_len && pos < max_size - 1) {
+            char c = read_buffer[(*read_buffer_pos)++];
+            
+            // Skip leading whitespace
+            if (!found_start && (c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
                 continue;
-            } else if (c == '\n' && found_start && brace_count == 0 && bracket_count == 0) {
-                // Newline after complete JSON
-                pos--; // Remove the newline
-                buffer[pos] = '\0';
-                return (int)pos;
             }
-        } else if (in_string && !escape_next) {
-            if (c == '\\') {
-                escape_next = true;
-            } else if (c == '"') {
-                in_string = false;
+            
+            buffer[pos++] = c;
+            
+            // Track JSON structure
+            if (!in_string && !escape_next) {
+                if (c == '{') {
+                    found_start = true;
+                    brace_count++;
+                } else if (c == '}') {
+                    brace_count--;
+                    if (brace_count == 0 && bracket_count == 0 && found_start) {
+                        buffer[pos] = '\0';
+                        return (int)pos;
+                    }
+                } else if (c == '[') {
+                    found_start = true;
+                    bracket_count++;
+                } else if (c == ']') {
+                    bracket_count--;
+                    if (brace_count == 0 && bracket_count == 0 && found_start) {
+                        buffer[pos] = '\0';
+                        return (int)pos;
+                    }
+                } else if (c == '"') {
+                    in_string = true;
+                } else if (c == '\n' && !found_start) {
+                    // Empty line before JSON
+                    pos = 0;
+                    continue;
+                } else if (c == '\n' && found_start && brace_count == 0 && bracket_count == 0) {
+                    // Newline after complete JSON
+                    pos--; // Remove the newline
+                    buffer[pos] = '\0';
+                    return (int)pos;
+                }
+            } else if (in_string && !escape_next) {
+                if (c == '\\') {
+                    escape_next = true;
+                } else if (c == '"') {
+                    in_string = false;
+                }
+            } else {
+                escape_next = false;
             }
-        } else {
-            escape_next = false;
         }
     }
     
@@ -235,7 +249,7 @@ static void *json_client_monitor_thread(void *arg)
         }
         
         // Read JSON message
-        int len = read_json_line(data->client->fd, buffer, sizeof(buffer));
+        int len = read_json_line(data->client, buffer, sizeof(buffer));
         
         if (len == -3) {
             // Connection closed
