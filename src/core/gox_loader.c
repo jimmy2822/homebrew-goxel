@@ -370,7 +370,7 @@ int load_gox_file_to_image(const char *path, image_t *image)
             while (chunk_read_dict_value(&c, in, dict_key, dict_value,
                                          &dict_value_size, __LINE__)) {
                 if (strcmp(dict_key, "name") == 0) {
-                    snprintf(mat->name, sizeof(mat->name), "%s", dict_value);
+                    snprintf(mat->name, sizeof(mat->name), "%.127s", dict_value);
                 }
                 DICT_CPY("color", mat->base_color);
                 DICT_CPY("metallic", mat->metallic);

@@ -16,8 +16,8 @@
  * goxel.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CAMERA_HEADLESS_H
-#define CAMERA_HEADLESS_H
+#ifndef CAMERA_DAEMON_H
+#define CAMERA_DAEMON_H
 
 #include <stdbool.h>
 #include "../camera.h"  // Provides camera_t
@@ -114,6 +114,6 @@ const char **headless_camera_get_preset_names(int *count);
  * Return:
  *   0 on success, -1 on error
  */
-int headless_camera_fit_box(camera_t *camera, const float box[4][4]);
+int daemon_camera_fit_box(camera_t *camera, const float box[4][4]);
 
-#endif // CAMERA_HEADLESS_H
+#endif // CAMERA_DAEMON_H

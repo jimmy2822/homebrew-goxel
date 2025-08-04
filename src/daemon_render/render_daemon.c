@@ -26,7 +26,11 @@
 
 #ifdef DAEMON_SOFTWARE_FALLBACK
 // Software fallback when OSMesa is not available
+#ifdef __APPLE__
 #include <OpenGL/gl.h>
+#else
+#include <GL/gl.h>
+#endif
 typedef void* OSMesaContext;
 #endif
 

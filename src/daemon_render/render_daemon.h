@@ -21,13 +21,11 @@
 
 #include <stdbool.h>
 
-#ifdef OSMESA_RENDERING
-#ifdef __APPLE__
-// OSMesa may not be available on macOS through standard Mesa
-typedef void* OSMesaContext;
-#else
+#ifdef HAVE_OSMESA
 #include <GL/osmesa.h>
-#endif
+#elif defined(OSMESA_RENDERING)
+// OSMesa rendering requested but headers not available - use stub
+typedef void* OSMesaContext;
 #endif
 
 // EGL support for alternative daemon rendering

@@ -24,7 +24,6 @@
 
 // Forward declarations for mode-specific main functions
 int gui_main(int argc, char **argv);
-int headless_main(int argc, char **argv);
 int daemon_main(int argc, char **argv);  // From src/daemon/daemon_main.c
 
 // Configuration for unified execution
@@ -38,9 +37,8 @@ typedef struct {
  * Detect execution mode from command line and environment
  * Priority order:
  * 1. --daemon flag -> daemon server mode
- * 2. --headless flag -> CLI client mode
- * 3. 'goxel-headless' symlink -> CLI client mode
- * 4. Default -> GUI mode
+ * 2. --headless flag -> Error (deprecated)
+ * 3. Default -> GUI mode
  */
 static void detect_execution_mode(int argc, char **argv, unified_config_t *config)
 {
@@ -140,9 +138,10 @@ int main(int argc, char **argv)
         filter_mode_args(&argc, argv, true);
         return daemon_main(argc, argv);
     } else if (config.headless_mode) {
-        // Run in headless/CLI client mode
-        filter_mode_args(&argc, argv, false);
-        return headless_main(argc, argv);
+        // Headless mode has been removed - use daemon mode instead
+        fprintf(stderr, "Error: Headless mode has been removed. Use daemon mode instead.\n");
+        fprintf(stderr, "Run with --daemon flag or use goxel-daemon binary.\n");
+        return 1;
     } else {
         // Run in GUI mode
         filter_mode_args(&argc, argv, false);

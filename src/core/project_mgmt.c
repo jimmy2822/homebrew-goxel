@@ -73,7 +73,8 @@ int project_create(goxel_core_t *ctx, const char *name, const char *path)
     
     // Set project metadata
     if (path) {
-        snprintf(ctx->image->path, sizeof(ctx->image->path), "%s", path);
+        free(ctx->image->path);
+        ctx->image->path = strdup(path);
     }
     
     // Create default layer
@@ -128,7 +129,8 @@ int project_open(goxel_core_t *ctx, const char *path)
     }
     
     ctx->image = img;
-    snprintf(ctx->image->path, sizeof(ctx->image->path), "%s", path);
+    free(ctx->image->path);
+    ctx->image->path = strdup(path);
     
     // Add to recent files
     project_add_recent(ctx, path);
@@ -155,7 +157,8 @@ int project_save(goxel_core_t *ctx, const char *path)
     
     int ret = goxel_export_to_file(save_path, format);
     if (ret == 0) {
-        snprintf(ctx->image->path, sizeof(ctx->image->path), "%s", save_path);
+        free(ctx->image->path);
+        ctx->image->path = strdup(save_path);
         project_add_recent(ctx, save_path);
     }
     

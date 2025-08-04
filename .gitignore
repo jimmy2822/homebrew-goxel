@@ -22,7 +22,6 @@
 # -------------------------------------
 /goxel
 /goxel-cli
-/goxel-headless
 /goxel-daemon
 
 # -------------------------------------
@@ -43,6 +42,14 @@
 test_*
 !test_*.c
 !test_*.h
+
+# TDD test executables
+tests/tdd/example_voxel_tdd
+tests/tdd/test_daemon_integration_tdd
+tests/tdd/test_daemon_jsonrpc_tdd
+tests/tdd/test_minimal_daemon_crash
+tests/tdd/test_multiple_create_project
+tests/tdd/test_concurrent_clients
 tests/test_cli_execution*
 tests/test_*_report
 tests/socket_server_demo
