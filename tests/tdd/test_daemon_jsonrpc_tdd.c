@@ -398,10 +398,10 @@ jsonrpc_response_t* handle_open_file(jsonrpc_request_t* req) {
     return create_success_response(req->id, result_json);
 }
 
-jsonrpc_response_t* handle_save_file(jsonrpc_request_t* req) {
+jsonrpc_response_t* handle_save_project(jsonrpc_request_t* req) {
     if (!req) return NULL;
     
-    if (strcmp(req->method, "goxel.save_file") != 0) {
+    if (strcmp(req->method, "goxel.save_project") != 0) {
         return create_error_response(req->id, "Invalid method");
     }
     
@@ -435,18 +435,18 @@ jsonrpc_response_t* handle_save_file(jsonrpc_request_t* req) {
         return create_error_response(req->id, "Save file must have .gox extension");
     }
     
-    // Create success response
+    // Create success response matching daemon format
     char result_json[256];
     snprintf(result_json, sizeof(result_json), 
-             "{\"saved\":true,\"path\":\"%s\"}", file_path);
+             "{\"success\":true,\"path\":\"%s\"}", file_path);
     
     return create_success_response(req->id, result_json);
 }
 
-jsonrpc_response_t* handle_export_file(jsonrpc_request_t* req) {
+jsonrpc_response_t* handle_export_model(jsonrpc_request_t* req) {
     if (!req) return NULL;
     
-    if (strcmp(req->method, "goxel.export_file") != 0) {
+    if (strcmp(req->method, "goxel.export_model") != 0) {
         return create_error_response(req->id, "Invalid method");
     }
     
@@ -492,30 +492,33 @@ jsonrpc_response_t* handle_export_file(jsonrpc_request_t* req) {
         return create_error_response(req->id, "Invalid file path");
     }
     
-    // Validate format
-    if (strlen(format) == 0) {
-        return create_error_response(req->id, "Missing export format");
-    }
-    
-    // Check supported formats
-    const char* supported_formats[] = {"obj", "ply", "stl", "png", "vox", "magica", NULL};
-    bool valid_format = false;
-    
-    for (int i = 0; supported_formats[i] != NULL; i++) {
-        if (strcmp(format, supported_formats[i]) == 0) {
-            valid_format = true;
-            break;
+    // Format is optional - auto-detect from extension if not provided
+    if (strlen(format) > 0) {
+        // Check supported formats
+        const char* supported_formats[] = {"obj", "ply", "stl", "png", "vox", "magica", NULL};
+        bool valid_format = false;
+        
+        for (int i = 0; supported_formats[i] != NULL; i++) {
+            if (strcmp(format, supported_formats[i]) == 0) {
+                valid_format = true;
+                break;
+            }
+        }
+        
+        if (!valid_format) {
+            return create_error_response(req->id, "Unsupported export format");
         }
     }
     
-    if (!valid_format) {
-        return create_error_response(req->id, "Unsupported export format");
-    }
-    
-    // Create success response
+    // Create success response matching daemon format
     char result_json[256];
-    snprintf(result_json, sizeof(result_json), 
-             "{\"exported\":true,\"path\":\"%s\",\"format\":\"%s\"}", file_path, format);
+    if (strlen(format) > 0) {
+        snprintf(result_json, sizeof(result_json), 
+                 "{\"success\":true,\"path\":\"%s\",\"format\":\"%s\"}", file_path, format);
+    } else {
+        snprintf(result_json, sizeof(result_json), 
+                 "{\"success\":true,\"path\":\"%s\"}", file_path);
+    }
     
     return create_success_response(req->id, result_json);
 }
@@ -1316,15 +1319,15 @@ int test_handle_open_file_no_params() {
     return 1;
 }
 
-int test_handle_save_file_valid() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_file\",\"params\":[\"/path/to/project.gox\"],\"id\":40}";
+int test_handle_save_project_valid() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_project\",\"params\":[\"/path/to/project.gox\"],\"id\":40}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_save_file(req);
+    jsonrpc_response_t* resp = handle_save_project(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == true, "Should be successful");
     TEST_ASSERT_EQ(40, resp->id);
-    TEST_ASSERT(strstr(resp->result_json, "saved") != NULL, "Should indicate file was saved");
+    TEST_ASSERT(strstr(resp->result_json, "success") != NULL, "Should indicate success");
     TEST_ASSERT(strstr(resp->result_json, "/path/to/project.gox") != NULL, "Should include path");
     
     free_jsonrpc_response(resp);
@@ -1332,11 +1335,11 @@ int test_handle_save_file_valid() {
     return 1;
 }
 
-int test_handle_save_file_invalid_extension() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_file\",\"params\":[\"/path/to/project.txt\"],\"id\":41}";
+int test_handle_save_project_invalid_extension() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_project\",\"params\":[\"/path/to/project.txt\"],\"id\":41}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_save_file(req);
+    jsonrpc_response_t* resp = handle_save_project(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == false, "Should fail for invalid extension");
     TEST_ASSERT_STR_EQ("Save file must have .gox extension", resp->error_message);
@@ -1346,11 +1349,11 @@ int test_handle_save_file_invalid_extension() {
     return 1;
 }
 
-int test_handle_save_file_empty_path() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_file\",\"params\":[\"\"],\"id\":42}";
+int test_handle_save_project_empty_path() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_project\",\"params\":[\"\"],\"id\":42}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_save_file(req);
+    jsonrpc_response_t* resp = handle_save_project(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == false, "Should fail for empty path");
     TEST_ASSERT_STR_EQ("Invalid file path", resp->error_message);
@@ -1360,11 +1363,11 @@ int test_handle_save_file_empty_path() {
     return 1;
 }
 
-int test_handle_save_file_no_params() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_file\",\"id\":43}";
+int test_handle_save_project_no_params() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.save_project\",\"id\":43}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_save_file(req);
+    jsonrpc_response_t* resp = handle_save_project(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == false, "Should fail for missing params");
     TEST_ASSERT_STR_EQ("Missing file path", resp->error_message);
@@ -1374,15 +1377,15 @@ int test_handle_save_file_no_params() {
     return 1;
 }
 
-int test_handle_export_file_valid_obj() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_file\",\"params\":[\"/path/to/model.obj\",\"obj\"],\"id\":50}";
+int test_handle_export_model_valid_obj() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_model\",\"params\":[\"/path/to/model.obj\",\"obj\"],\"id\":50}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_export_file(req);
+    jsonrpc_response_t* resp = handle_export_model(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == true, "Should be successful");
     TEST_ASSERT_EQ(50, resp->id);
-    TEST_ASSERT(strstr(resp->result_json, "exported") != NULL, "Should indicate file was exported");
+    TEST_ASSERT(strstr(resp->result_json, "success") != NULL, "Should indicate success");
     TEST_ASSERT(strstr(resp->result_json, "/path/to/model.obj") != NULL, "Should include path");
     TEST_ASSERT(strstr(resp->result_json, "\"format\":\"obj\"") != NULL, "Should include format");
     
@@ -1391,11 +1394,11 @@ int test_handle_export_file_valid_obj() {
     return 1;
 }
 
-int test_handle_export_file_valid_ply() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_file\",\"params\":[\"/path/to/model.ply\",\"ply\"],\"id\":51}";
+int test_handle_export_model_valid_ply() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_model\",\"params\":[\"/path/to/model.ply\",\"ply\"],\"id\":51}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_export_file(req);
+    jsonrpc_response_t* resp = handle_export_model(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == true, "Should be successful");
     TEST_ASSERT(strstr(resp->result_json, "\"format\":\"ply\"") != NULL, "Should include ply format");
@@ -1405,11 +1408,11 @@ int test_handle_export_file_valid_ply() {
     return 1;
 }
 
-int test_handle_export_file_invalid_format() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_file\",\"params\":[\"/path/to/model.xyz\",\"xyz\"],\"id\":52}";
+int test_handle_export_model_invalid_format() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_model\",\"params\":[\"/path/to/model.xyz\",\"xyz\"],\"id\":52}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_export_file(req);
+    jsonrpc_response_t* resp = handle_export_model(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == false, "Should fail for invalid format");
     TEST_ASSERT_STR_EQ("Unsupported export format", resp->error_message);
@@ -1419,25 +1422,28 @@ int test_handle_export_file_invalid_format() {
     return 1;
 }
 
-int test_handle_export_file_missing_format() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_file\",\"params\":[\"/path/to/model.obj\"],\"id\":53}";
+int test_handle_export_model_missing_format() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_model\",\"params\":[\"/path/to/model.obj\"],\"id\":53}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_export_file(req);
+    jsonrpc_response_t* resp = handle_export_model(req);
     TEST_ASSERT(resp != NULL, "Should get response");
-    TEST_ASSERT(resp->success == false, "Should fail for missing format");
-    TEST_ASSERT_STR_EQ("Missing export format", resp->error_message);
+    TEST_ASSERT(resp->success == true, "Should succeed with auto-detected format");
+    TEST_ASSERT(strstr(resp->result_json, "success") != NULL, "Should indicate success");
+    TEST_ASSERT(strstr(resp->result_json, "/path/to/model.obj") != NULL, "Should include path");
+    // Should not include format when auto-detected
+    TEST_ASSERT(strstr(resp->result_json, "\"format\"") == NULL, "Should not include format when auto-detected");
     
     free_jsonrpc_response(resp);
     free_jsonrpc_request(req);
     return 1;
 }
 
-int test_handle_export_file_empty_path() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_file\",\"params\":[\"\",\"obj\"],\"id\":54}";
+int test_handle_export_model_empty_path() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_model\",\"params\":[\"\",\"obj\"],\"id\":54}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_export_file(req);
+    jsonrpc_response_t* resp = handle_export_model(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == false, "Should fail for empty path");
     TEST_ASSERT_STR_EQ("Invalid file path", resp->error_message);
@@ -1447,11 +1453,11 @@ int test_handle_export_file_empty_path() {
     return 1;
 }
 
-int test_handle_export_file_no_params() {
-    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_file\",\"id\":55}";
+int test_handle_export_model_no_params() {
+    const char* json = "{\"jsonrpc\":\"2.0\",\"method\":\"goxel.export_model\",\"id\":55}";
     jsonrpc_request_t* req = parse_jsonrpc_request(json);
     
-    jsonrpc_response_t* resp = handle_export_file(req);
+    jsonrpc_response_t* resp = handle_export_model(req);
     TEST_ASSERT(resp != NULL, "Should get response");
     TEST_ASSERT(resp->success == false, "Should fail for missing params");
     TEST_ASSERT_STR_EQ("Missing parameters", resp->error_message);
@@ -2077,16 +2083,16 @@ int main() {
     RUN_TEST(test_handle_open_file_invalid_extension);
     RUN_TEST(test_handle_open_file_empty_path);
     RUN_TEST(test_handle_open_file_no_params);
-    RUN_TEST(test_handle_save_file_valid);
-    RUN_TEST(test_handle_save_file_invalid_extension);
-    RUN_TEST(test_handle_save_file_empty_path);
-    RUN_TEST(test_handle_save_file_no_params);
-    RUN_TEST(test_handle_export_file_valid_obj);
-    RUN_TEST(test_handle_export_file_valid_ply);
-    RUN_TEST(test_handle_export_file_invalid_format);
-    RUN_TEST(test_handle_export_file_missing_format);
-    RUN_TEST(test_handle_export_file_empty_path);
-    RUN_TEST(test_handle_export_file_no_params);
+    RUN_TEST(test_handle_save_project_valid);
+    RUN_TEST(test_handle_save_project_invalid_extension);
+    RUN_TEST(test_handle_save_project_empty_path);
+    RUN_TEST(test_handle_save_project_no_params);
+    RUN_TEST(test_handle_export_model_valid_obj);
+    RUN_TEST(test_handle_export_model_valid_ply);
+    RUN_TEST(test_handle_export_model_invalid_format);
+    RUN_TEST(test_handle_export_model_missing_format);
+    RUN_TEST(test_handle_export_model_empty_path);
+    RUN_TEST(test_handle_export_model_no_params);
     RUN_TEST(test_handle_get_voxel_existing);
     RUN_TEST(test_handle_get_voxel_non_existing);
     RUN_TEST(test_handle_get_voxel_out_of_bounds);
