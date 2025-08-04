@@ -1099,6 +1099,28 @@ static socket_error_t handle_binary_client(socket_server_t *server,
     LOG_I("Handling binary client: ID=%u", client->id);
     
     while (server->running) {
+        // Use poll to wait for data with timeout
+        struct pollfd pfd;
+        pfd.fd = client->fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        
+        int poll_result = poll(&pfd, 1, 100); // 100ms timeout
+        
+        if (poll_result < 0) {
+            if (errno == EINTR) continue;
+            LOG_E("Poll error: %s", strerror(errno));
+            break;
+        }
+        
+        if (poll_result == 0) continue; // Timeout, check running flag
+        
+        // Check for disconnection
+        if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+            LOG_I("Client %u disconnected", client->id);
+            break;
+        }
+        
         socket_message_t *message = NULL;
         socket_error_t result = read_binary_message_from_client(client, &message);
         
