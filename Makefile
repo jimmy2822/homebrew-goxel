@@ -16,12 +16,6 @@ release:
 profile:
 	scons $(JOBS) mode=profile
 
-headless:
-	scons $(JOBS) headless=1 gui=0
-
-headless-release:
-	scons $(JOBS) mode=release headless=1 gui=0
-
 cli-tools:
 	scons $(JOBS) cli_tools=1
 
@@ -36,9 +30,6 @@ daemon-release:
 
 run:
 	./goxel
-
-run-headless:
-	./goxel-headless
 
 run-cli:
 	./goxel-cli

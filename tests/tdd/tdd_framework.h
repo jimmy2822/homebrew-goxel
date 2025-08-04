@@ -15,6 +15,7 @@ typedef struct {
     int total_tests;
     int passed_tests;
     int failed_tests;
+    int pending_tests;
     clock_t start_time;
 } test_stats_t;
 
@@ -62,9 +63,18 @@ static test_stats_t g_test_stats = {0};
 
 #define RUN_TEST(test_func) do { \
     printf("\nRunning: %s\n", #test_func); \
-    if (test_func()) { \
+    int result = test_func(); \
+    if (result == 1) { \
         printf(GREEN "✓ PASS" RESET " %s\n", #test_func); \
+    } else if (result == -1) { \
+        printf(YELLOW "⏸ PENDING" RESET " %s\n", #test_func); \
+        g_test_stats.pending_tests++; \
     } \
+} while(0)
+
+#define TEST_PENDING(message) do { \
+    printf(YELLOW "⏸ PENDING" RESET " %s - %s\n", __func__, message); \
+    return -1; \
 } while(0)
 
 #define TEST_SUITE_BEGIN() do { \
@@ -78,6 +88,9 @@ static test_stats_t g_test_stats = {0};
     printf("Total tests: %d\n", g_test_stats.total_tests); \
     printf(GREEN "Passed: %d" RESET "\n", g_test_stats.passed_tests); \
     printf(RED "Failed: %d" RESET "\n", g_test_stats.failed_tests); \
+    if (g_test_stats.pending_tests > 0) { \
+        printf(YELLOW "Pending: %d" RESET "\n", g_test_stats.pending_tests); \
+    } \
     printf("Time elapsed: %.3f seconds\n", elapsed); \
     printf("Success rate: %.1f%%\n", \
            g_test_stats.total_tests > 0 ? \

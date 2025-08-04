@@ -167,7 +167,7 @@ const char **headless_camera_get_preset_names(int *count)
     return preset_names;
 }
 
-int headless_camera_fit_box(camera_t *camera, const float box[4][4])
+int daemon_camera_fit_box(camera_t *camera, const float box[4][4])
 {
     if (!camera) return -1;
     
