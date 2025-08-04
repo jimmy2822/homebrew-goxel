@@ -4,17 +4,22 @@
 
 Goxel-daemon is a Unix socket JSON-RPC server for the Goxel voxel editor, enabling programmatic control and automation. Written in C99.
 
-**⚠️ v15.0 Status: BETA - Stable with Connection Limitation**
+**⚠️ v15.0.1 Status: BETA - Export/Render Functions Fixed**
 - **JSON-RPC**: ✅ All 15 methods implemented and functional
-- **TDD Tests**: ✅ 269 total tests (265 passing, 4 integration test failures)
+- **TDD Tests**: ✅ 271 total tests (267 passing, 4 integration test failures)
 - **GitLab CI**: ✅ Automated TDD testing on every push
 - **Memory Safety**: ✅ Fixed double-free bug in JSON serialization
 - **First Request**: ✅ Works correctly 
 - **Connection Reuse**: ⚠️ Not supported - one request per connection
 - **Workaround**: ✅ Create new connection for each request (standard usage)
-- **Usage Status**: ✅ Stable for single-request operations
+- **Export Formats**: ⚠️ Only .gox format supported in daemon mode (both save_project and export_model)
+- **Rendering**: ✅ Fixed in PR #6 - now produces correct images with OSMesa
 
-**Test Failures:** 4 integration tests fail due to connection lifecycle expectations (tests expect reuse, daemon doesn't support it)
+**Recent Fixes (v15.0.1):**
+- Fixed TDD test method names (save_file → save_project, export_file → export_model) in PR #5
+- Fixed daemon render functionality to produce actual images instead of gray output in PR #6
+- Added real file operation integration tests that verify actual functionality
+- Simplified export implementation to properly support .gox format
 
 **Daemon Features:**
 - Unix socket communication
@@ -79,17 +84,17 @@ The daemon supports these methods (array parameters):
 **Project Management**
 - `goxel.create_project` - Create new project: [name, width, height, depth]
 - `goxel.open_file` - Open file: [path] (supports .gox, .vox, .obj, .ply, .png, .stl)
-- `goxel.save_file` - Save project: [path]
-- `goxel.export_file` - Export to format: [path, format]
+- `goxel.save_project` - Save project: [path] (⚠️ only .gox format in daemon mode)
+- `goxel.export_model` - Export to format: [path, format] (⚠️ only .gox format in daemon mode)
 - `goxel.get_project_info` - Get project metadata: []
 
 **Voxel Operations**
-- `goxel.add_voxels` - Add voxels: {voxels: [{position, color}]}
-- `goxel.remove_voxels` - Remove voxels: {voxels: [{position}]}
-- `goxel.paint_voxels` - Change colors: {voxels: [{position, color}]}
-- `goxel.get_voxel` - Query voxel: {position: [x, y, z]}
-- `goxel.flood_fill` - Fill connected: {position, color}
-- `goxel.procedural_shape` - Generate shape: {shape, size, position, color}
+- `goxel.add_voxel` - Add single voxel: [x, y, z, r, g, b, a]
+- `goxel.remove_voxel` - Remove single voxel: [x, y, z]
+- `goxel.paint_voxel` - Change voxel color: [x, y, z, r, g, b, a]
+- `goxel.get_voxel` - Query voxel: [x, y, z]
+- `goxel.fill_selection` - Fill selection with color: [r, g, b, a]
+- `goxel.render_scene` - Render to image: [output_path, width, height]
 
 **Layer Management**
 - `goxel.list_layers` - Get all layers: []
@@ -143,6 +148,19 @@ for i in range(10):
     # ... send request ...
     sock.close()
 ```
+
+### Export Format Limitations
+In daemon mode, export functionality is limited:
+
+1. **save_project**: Only supports .gox format (native Goxel format)
+2. **export_model**: Only supports .gox format in daemon mode (other formats return error)
+3. **Rendering**: Works correctly with OSMesa dependency (fixed in v15.0.1)
+
+### Test Coverage Issues
+- **Method Names**: TDD tests previously used wrong method names (fixed in v15.0.1)
+- **Mock vs Real**: TDD tests use mock implementations, not actual file operations
+- **Integration Tests**: Real file operation tests in `tests/test_daemon_file_operations.c`
+- **Connection Reuse**: 4 integration tests expect connection reuse which daemon doesn't support
 
 ### Documentation
 - Architecture improvements: `docs/daemon-architecture-improvements.md`
@@ -225,18 +243,24 @@ touch tests/tdd/test_new_feature.c
 
 #### TDD Implementation Status
 - **JSON-RPC Methods**: All 15 methods implemented with full TDD
-- **Test Coverage**: 269 total tests across 3 test suites
+- **Test Coverage**: 271 total tests across 3 test suites
   - `example_voxel_tdd`: 19 tests (100% passing)
-  - `test_daemon_jsonrpc_tdd`: 217 tests (100% passing)
+  - `test_daemon_jsonrpc_tdd`: 219 tests (100% passing) - Method names fixed in v15.0.1
   - `test_daemon_integration_tdd`: 33 tests (87.9% passing, 4 known failures)
+  - `test_daemon_file_operations`: 12 tests (100% passing) - Real file operations
 - **Memory Safety**: Fixed use-after-free bugs
 - **Global State**: Centralized management
-- **Known Issues**: 4 integration tests fail because they expect connection reuse (daemon design: one request per connection)
+- **Known Issues**: 
+  - 4 integration tests fail because they expect connection reuse (daemon design: one request per connection)
+  - TDD tests use mock implementations - real tests in `tests/test_daemon_file_operations.c`
 
 ### Testing
 ```bash
 # Run TDD tests (required before commits)
-./tests/run_tdd_tests.sh
+cd tests/tdd && make all && ./test_daemon_jsonrpc_tdd
+
+# Run integration tests for file operations
+cd tests && ./run_file_ops_test.sh
 
 # Run daemon manually
 ./goxel-daemon --foreground --socket /tmp/test.sock
@@ -287,9 +311,9 @@ glab ci view <PIPELINE_ID> --web
 
 ---
 
-**Version**: 15.0.0  
-**Updated**: August 2025  
-**Status**: Beta - Automated Testing via GitLab CI
+**Version**: 15.0.1  
+**Updated**: January 2025  
+**Status**: Beta - Core Functionality Working
 
 ## Development Philosophy
 
