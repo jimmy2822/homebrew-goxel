@@ -1478,10 +1478,7 @@ static json_rpc_response_t *handle_goxel_save_project(const json_rpc_request_t *
                                              error_msg, NULL, &request->id);
     }
     
-    // Release project lock after successful save
-    project_lock_release();
-    g_project_state.has_active_project = false;
-    memset(g_project_state.project_id, 0, sizeof(g_project_state.project_id));
+    // Don't release project lock or clear state - save doesn't close the project
     
     json_value *result_obj = json_object_new(2);
     json_object_push(result_obj, "success", json_boolean_new(1));
@@ -1651,10 +1648,7 @@ static json_rpc_response_t *handle_goxel_export_model(const json_rpc_request_t *
                                              error_msg, NULL, &request->id);
     }
     
-    // Release project lock after successful export
-    project_lock_release();
-    g_project_state.has_active_project = false;
-    memset(g_project_state.project_id, 0, sizeof(g_project_state.project_id));
+    // Don't release project lock or clear state - export doesn't close the project
     
     json_value *result_obj = json_object_new(3);
     json_object_push(result_obj, "success", json_boolean_new(1));
