@@ -22,16 +22,20 @@
 #include <stdbool.h>
 
 #ifdef HAVE_OSMESA
+// Ensure GL macros are defined properly for OSMesa
+#ifndef GLAPI
+#define GLAPI extern
+#endif
+#ifndef GLAPIENTRY
+#define GLAPIENTRY
+#endif
+#include <GL/gl.h>
 #include <GL/osmesa.h>
 #elif defined(OSMESA_RENDERING)
 // OSMesa rendering requested but headers not available - use stub
 typedef void* OSMesaContext;
 #endif
 
-// EGL support for alternative daemon rendering
-#ifdef EGL_RENDERING
-#include <EGL/egl.h>
-#endif
 
 /*
  * Daemon rendering system for Goxel using OSMesa.

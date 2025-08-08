@@ -2033,11 +2033,11 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
                                              NULL, &request->id);
     }
     
-    // Parameters: width, height, format (optional), output_path (optional)
-    int width = get_int_param(&request->params, 0, "width");
-    int height = get_int_param(&request->params, 1, "height");
-    const char *format = get_string_param(&request->params, 2, "format");
-    const char *output_path = get_string_param(&request->params, 3, "output_path");
+    // Parameters: output_path, width, height (matching API documentation)
+    const char *output_path = get_string_param(&request->params, 0, "output_path");
+    int width = get_int_param(&request->params, 1, "width");
+    int height = get_int_param(&request->params, 2, "height");
+    const char *format = "png"; // Default format
     
     if (width <= 0) width = 512;
     if (height <= 0) height = 512;
@@ -2159,8 +2159,8 @@ typedef struct {
     char *script_path;
     char *source_name;
     json_rpc_id_t request_id;
-    pthread_mutex_t *result_mutex;
-    pthread_cond_t *result_cond;
+    pthread_mutex_t result_mutex;  // Embedded, not pointer
+    pthread_cond_t result_cond;    // Embedded, not pointer
     int result_code;
     char *result_message;
     bool completed;
@@ -2169,32 +2169,48 @@ typedef struct {
 // Worker pool for script execution (initialized elsewhere)
 extern worker_pool_t *g_script_worker_pool;
 
-#if 0  // TODO: Enable when worker pool integration is complete
+// Global mutex for script execution (QuickJS is not thread-safe)
+static pthread_mutex_t g_script_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // Process function for script execution in worker thread
-static int process_script_execution(void *request_data, int worker_id, void *context)
+int process_script_execution(void *request_data, int worker_id, void *context)
 {
     script_execution_request_t *script_req = (script_execution_request_t *)request_data;
     int result = -1;
     
+    LOG_D("Worker %d received script_req %p", worker_id, script_req);
     LOG_D("Worker %d executing script: %s", worker_id, 
           script_req->source_name ? script_req->source_name : "<anonymous>");
     
-    // Initialize script engine if needed (thread-safe initialization)
-    static pthread_once_t script_init_once = PTHREAD_ONCE_INIT;
-    pthread_once(&script_init_once, script_init);
+    // In daemon mode, we don't call script_init() as it tries to load
+    // script files that may not exist. The QuickJS runtime will be
+    // initialized automatically on first use by script_run_from_string/file.
+    
+    // Serialize script execution (QuickJS runtime is not thread-safe)
+    pthread_mutex_lock(&g_script_mutex);
     
     // Execute the script
     if (script_req->script_code) {
         // Execute from string
+        LOG_D("About to execute script: '%s'", script_req->script_code);
         result = script_run_from_string(script_req->script_code, script_req->source_name);
+        LOG_D("Script execution returned: %d", result);
     } else if (script_req->script_path) {
         // Execute from file
+        LOG_D("About to execute script file: '%s'", script_req->script_path);
         result = script_run_from_file(script_req->script_path, 0, NULL);
+        LOG_D("Script file execution returned: %d", result);
     }
     
+    pthread_mutex_unlock(&g_script_mutex);
+    
+    LOG_D("Script mutex unlocked, about to store result");
+    
     // Store result
-    pthread_mutex_lock(script_req->result_mutex);
+    pthread_mutex_lock(&script_req->result_mutex);
+    LOG_D("Acquired result mutex, storing result %d", result);
     script_req->result_code = result;
+    LOG_D("Set result_code to %d, verifying: result_code=%d", result, script_req->result_code);
     if (result == 0) {
         script_req->result_message = strdup("Script executed successfully");
     } else {
@@ -2202,16 +2218,19 @@ static int process_script_execution(void *request_data, int worker_id, void *con
         snprintf(error_msg, sizeof(error_msg), "Script execution failed with code %d", result);
         script_req->result_message = strdup(error_msg);
     }
+    LOG_D("Set result_message to: %s", script_req->result_message);
     script_req->completed = true;
-    pthread_cond_signal(script_req->result_cond);
-    pthread_mutex_unlock(script_req->result_mutex);
+    LOG_D("About to signal completion, result_code=%d, message=%s", 
+          script_req->result_code, script_req->result_message);
+    pthread_cond_signal(&script_req->result_cond);
+    pthread_mutex_unlock(&script_req->result_mutex);
+    LOG_D("Result stored and signaled, final check: result_code=%d", script_req->result_code);
     
     return result;
 }
-#endif  // End of TODO: Enable when worker pool integration is complete
 
 // Cleanup function for script execution request  
-static void cleanup_script_execution(void *request_data)
+void cleanup_script_execution(void *request_data)
 {
     script_execution_request_t *script_req = (script_execution_request_t *)request_data;
     if (script_req) {
@@ -2219,7 +2238,9 @@ static void cleanup_script_execution(void *request_data)
         SAFE_FREE(script_req->script_path);
         SAFE_FREE(script_req->source_name);
         SAFE_FREE(script_req->result_message);
-        // Note: Don't free mutex/cond here as they're managed by the handler
+        // Destroy synchronization primitives
+        pthread_mutex_destroy(&script_req->result_mutex);
+        pthread_cond_destroy(&script_req->result_cond);
         free(script_req);
     }
 }
@@ -2295,11 +2316,8 @@ static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t
     }
     
     // Initialize synchronization primitives
-    pthread_mutex_t result_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_cond_t result_cond = PTHREAD_COND_INITIALIZER;
-    
-    script_req->result_mutex = &result_mutex;
-    script_req->result_cond = &result_cond;
+    pthread_mutex_init(&script_req->result_mutex, NULL);
+    pthread_cond_init(&script_req->result_cond, NULL);
     script_req->request_id = request->id;
     script_req->completed = false;
     
@@ -2317,6 +2335,7 @@ static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t
     }
     
     // Submit to worker pool
+    LOG_D("Submitting script_req %p to worker pool", script_req);
     worker_pool_error_t pool_result = worker_pool_submit_request(g_script_worker_pool, 
                                                                 script_req, 
                                                                 WORKER_PRIORITY_NORMAL);
@@ -2346,10 +2365,10 @@ static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t
         timeout_spec.tv_nsec -= 1000000000L;
     }
     
-    pthread_mutex_lock(&result_mutex);
+    pthread_mutex_lock(&script_req->result_mutex);
     int wait_result = 0;
     while (!script_req->completed && wait_result == 0) {
-        wait_result = pthread_cond_timedwait(&result_cond, &result_mutex, &timeout_spec);
+        wait_result = pthread_cond_timedwait(&script_req->result_cond, &script_req->result_mutex, &timeout_spec);
     }
     
     json_rpc_response_t *response;
@@ -2358,20 +2377,29 @@ static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t
                                                  "Script execution timeout",
                                                  NULL, &request->id);
     } else {
+        LOG_D("Wait completed, checking script_req state");
+        LOG_D("script_req=%p, completed=%d", script_req, script_req->completed);
+        LOG_D("Creating response with script_req %p, result_code=%d, message=%s", 
+              script_req, script_req->result_code, 
+              script_req->result_message ? script_req->result_message : "NULL");
+        
+        // Double-check the values before creating response
+        int final_code = script_req->result_code;
+        const char *final_message = script_req->result_message;
+        LOG_D("Final values: code=%d, message=%s", final_code, final_message ? final_message : "NULL");
+        
         json_value *result_obj = json_object_new(3);
-        json_object_push(result_obj, "success", json_boolean_new(script_req->result_code == 0));
-        json_object_push(result_obj, "code", json_integer_new(script_req->result_code));
+        json_object_push(result_obj, "success", json_boolean_new(final_code == 0));
+        json_object_push(result_obj, "code", json_integer_new(final_code));
         json_object_push(result_obj, "message", 
-                        json_string_new(script_req->result_message ? script_req->result_message : "Unknown result"));
+                        json_string_new(final_message ? final_message : "Unknown result"));
         response = json_rpc_create_response_result(result_obj, &request->id);
     }
     
-    pthread_mutex_unlock(&result_mutex);
+    pthread_mutex_unlock(&script_req->result_mutex);
     
-    // Note: The worker thread will clean up the request data
-    // We just need to destroy the synchronization primitives
-    pthread_mutex_destroy(&result_mutex);
-    pthread_cond_destroy(&result_cond);
+    // Clean up the request data manually since we disabled automatic cleanup
+    cleanup_script_execution(script_req);
     
     return response;
 }

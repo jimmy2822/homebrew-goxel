@@ -382,15 +382,13 @@ static void *json_client_monitor_thread(void *arg)
     // Mark monitor as not running
     data->client->handler_data.json.monitor_running = false;
     
-    // Only disconnect if there was an error or client disconnected
-    // Do NOT disconnect just because we exited the loop normally
-    if (data->running) {
-        LOG_I("Client %u appears to have disconnected", data->client->id);
-        // Disconnect client using public API
-        socket_server_disconnect_client(data->server, data->client);
-    } else {
-        LOG_I("Monitor thread stopping normally for client %u", data->client->id);
-    }
+    // DO NOT automatically disconnect the client!
+    // The monitor thread should only handle disconnection if there was an actual error
+    // detected in the loop (POLLHUP, POLLERR, connection closed, etc.)
+    
+    // The monitoring thread exiting does not mean the connection is broken.
+    // Let the socket server handle connection cleanup when appropriate.
+    LOG_I("Monitor thread for client %u exited - connection remains active", data->client->id);
     
     // Clean up monitor data
     free(data);

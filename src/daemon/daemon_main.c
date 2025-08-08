@@ -1214,13 +1214,6 @@ static socket_message_t *handle_socket_message(socket_server_t *server,
     return response;
 }
 
-/**
- * Dummy process function until script execution is fully integrated
- */
-static int dummy_process_script(void *request_data, int worker_id, void *context) {
-    (void)request_data; (void)worker_id; (void)context;
-    return 0;
-}
 
 /**
  * Create and initialize concurrent daemon.
@@ -1351,8 +1344,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     
     
     // Create script worker pool with separate configuration
-    // TODO: Enable when worker pool integration is complete
-#if 0
+#if 1
     // Forward declare the process function from json_rpc.c
     extern int process_script_execution(void *request_data, int worker_id, void *context);
     extern void cleanup_script_execution(void *request_data);
@@ -1362,7 +1354,7 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
     script_pool_config.queue_capacity = 100;  // Smaller queue for scripts
     script_pool_config.enable_priority_queue = true;
     script_pool_config.process_func = process_script_execution;
-    script_pool_config.cleanup_func = cleanup_script_execution;
+    script_pool_config.cleanup_func = NULL; // We'll clean up manually after reading results
     script_pool_config.context = daemon;
     
     daemon->script_worker_pool = worker_pool_create(&script_pool_config);
@@ -1377,20 +1369,6 @@ static concurrent_daemon_t *create_concurrent_daemon(const program_config_t *con
         pthread_mutex_destroy(&daemon->protocol_mutex);
         free(daemon);
         return NULL;
-    }
-#else
-    // Use dummy worker pool for now
-    worker_pool_config_t script_pool_config = worker_pool_default_config();
-    script_pool_config.worker_count = 2;  // Minimal workers
-    script_pool_config.queue_capacity = 50;
-    script_pool_config.process_func = dummy_process_script;
-    script_pool_config.cleanup_func = NULL;
-    script_pool_config.context = daemon;
-    
-    daemon->script_worker_pool = worker_pool_create(&script_pool_config);
-    if (!daemon->script_worker_pool) {
-        LOG_W("Failed to create script worker pool, will use synchronous execution");
-        daemon->script_worker_pool = NULL;
     }
 #endif
     

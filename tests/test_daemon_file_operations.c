@@ -223,8 +223,10 @@ int main(int argc, char** argv) {
     printf("Tests passed: %d\n", tests_run - tests_failed);
     
     // Clean up
-    snprintf(cmd, sizeof(cmd), "rm -rf %s", TEST_OUTPUT_DIR);
-    system(cmd);
+    // NOTE: Commented out to keep test output files for inspection
+    // snprintf(cmd, sizeof(cmd), "rm -rf %s", TEST_OUTPUT_DIR);
+    // system(cmd);
+    printf("\n=== Test output files kept in: %s ===\n", TEST_OUTPUT_DIR);
     
     return tests_failed > 0 ? 1 : 0;
 }

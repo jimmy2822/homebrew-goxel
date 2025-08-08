@@ -24,6 +24,7 @@
 
 #include "goxel.h"
 #include "../log.h"
+#include "daemon_render/render_daemon.h"
 
 // The global goxel instance for daemon mode
 goxel_t goxel = {};
@@ -36,6 +37,11 @@ void goxel_init(void)
     // Initialize core components
     shapes_init();
     // Note: script_init() is not available in daemon mode
+    
+    // Initialize daemon rendering with default size
+    if (daemon_render_init(512, 512) != 0) {
+        LOG_W("Failed to initialize daemon rendering, rendering will be limited");
+    }
     
     // Initialize a minimal default palette for daemon mode
     // This avoids file I/O which can cause hangs in daemon mode
@@ -152,6 +158,9 @@ void goxel_reset(void)
 void goxel_release(void)
 {
     LOG_I("Releasing goxel resources");
+    
+    // Shutdown daemon rendering
+    daemon_render_shutdown();
     
     if (goxel.image) {
         image_delete(goxel.image);

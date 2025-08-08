@@ -360,8 +360,8 @@ if target_os == 'darwin':
             osmesa_found = True
             print("Found OSMesa via pkg-config")
         else:
-            # Check common homebrew locations
-            homebrew_paths = ['/opt/homebrew', '/usr/local']
+            # Check common homebrew locations including custom OSMesa installation
+            homebrew_paths = ['/opt/homebrew/opt/osmesa', '/opt/homebrew', '/usr/local']
             for brew_path in homebrew_paths:
                 osmesa_lib = os.path.join(brew_path, 'lib', 'libOSMesa.dylib')
                 osmesa_include = os.path.join(brew_path, 'include', 'GL', 'osmesa.h')

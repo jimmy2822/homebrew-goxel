@@ -34,9 +34,6 @@
 typedef void* OSMesaContext;
 #endif
 
-#ifdef EGL_RENDERING
-#include <EGL/egl.h>
-#endif
 
 // Minimal logging macros for standalone use
 #ifndef LOG_I
@@ -66,18 +63,12 @@ typedef struct {
 #ifdef HAVE_OSMESA
     OSMesaContext osmesa_context;
 #endif
-#ifdef EGL_RENDERING
-    EGLDisplay egl_display;
-    EGLContext egl_context;
-    EGLSurface egl_surface;
-    EGLConfig egl_config;
-#endif
     void *buffer;
     int width;
     int height;
     int bpp;           // bytes per pixel (typically 4 for RGBA)
     bool initialized;
-    int backend;       // 0 = OSMesa, 1 = EGL, 2 = software fallback
+    int backend;       // 0 = OSMesa, 2 = software fallback
 } daemon_context_t;
 
 static daemon_context_t g_daemon_ctx = {0};
@@ -127,6 +118,7 @@ int daemon_render_init(int width, int height)
     }
 #endif
 
+
     // Software fallback mode
     g_daemon_ctx.backend = 2; // Software fallback
     g_daemon_ctx.initialized = true;
@@ -158,6 +150,7 @@ void daemon_render_shutdown(void)
         g_daemon_ctx.osmesa_context = NULL;
     }
 #endif
+
 
     if (g_daemon_ctx.buffer) {
         free(g_daemon_ctx.buffer);
@@ -203,6 +196,7 @@ int daemon_render_resize(int width, int height)
         }
     }
 #endif
+
 
     if (g_daemon_ctx.backend == 2) {
         // Software fallback - just clear the buffer
@@ -264,11 +258,13 @@ int daemon_render_to_file(const char *filename, const char *format)
         return -1;
     }
     
-    uint8_t *src = (uint8_t*)g_daemon_ctx.buffer;
-    for (int y = 0; y < h; y++) {
-        memcpy(flipped_buffer + y * w * bpp, 
-               src + (h - 1 - y) * w * bpp, 
-               w * bpp);
+    {
+        uint8_t *src = (uint8_t*)g_daemon_ctx.buffer;
+        for (int y = 0; y < h; y++) {
+            memcpy(flipped_buffer + y * w * bpp, 
+                   src + (h - 1 - y) * w * bpp, 
+                   w * bpp);
+        }
     }
     
     // Use Goxel's img_write function
@@ -318,8 +314,6 @@ OSMesaContext daemon_render_create_context(void)
 int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera,
                                     const uint8_t background_color[4])
 {
-    LOG_I("daemon_render_scene_with_camera: Starting...");
-    
     if (!g_daemon_ctx.initialized) {
         LOG_E("Daemon render not initialized");
         return -1;
@@ -329,18 +323,15 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
         LOG_E("Invalid image or camera");
         return -1;
     }
-
-    LOG_I("daemon_render_scene_with_camera: Backend = %d", g_daemon_ctx.backend);
     
     // For software fallback mode, render voxels as simple 2D projection
     if (g_daemon_ctx.backend == 2) {
-        LOG_I("Software fallback mode - rendering voxels as 2D projection");
         uint8_t *buf = (uint8_t*)g_daemon_ctx.buffer;
         int w = g_daemon_ctx.width;
         int h = g_daemon_ctx.height;
         
-        // Clear background to light gray
-        uint8_t bg_color[4] = {240, 240, 240, 255};
+        // Clear background to dark gray for better contrast
+        uint8_t bg_color[4] = {64, 64, 64, 255};
         if (background_color) {
             memcpy(bg_color, background_color, 4);
         }
@@ -354,12 +345,10 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
         
         // Simple voxel rendering: iterate through all visible layers and voxels
         const layer_t *layer;
-        int voxel_count = 0;
         
         for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
             if (!layer->visible || !layer->volume) continue;
             
-            LOG_I("Rendering layer: %s", layer->name);
             
             // Simple voxel iteration - project each voxel to screen
             int bbox[2][3];
@@ -372,18 +361,17 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
                         uint8_t voxel[4];
                         volume_get_at(layer->volume, NULL, pos, voxel);
                         if (voxel[3] > 0) {
-                            voxel_count++;
                             
                             // Simple orthogonal projection: X->screen_x, Z->screen_y (top-down view)
                             // Center the projection and add some offset
                             int center_x = (bbox[0][0] + bbox[1][0]) / 2;
                             int center_z = (bbox[0][2] + bbox[1][2]) / 2;
-                            int screen_x = w/2 + (x - center_x) * 8;
-                            int screen_y = h/2 + (z - center_z) * 8;
+                            int screen_x = w/2 + (x - center_x) * 12;  // Increased scale
+                            int screen_y = h/2 + (z - center_z) * 12;  // Increased scale
                             
-                            // Draw a 4x4 pixel square for each voxel
-                            for (int dy = 0; dy < 4; dy++) {
-                                for (int dx = 0; dx < 4; dx++) {
+                            // Draw a 8x8 pixel square for each voxel (larger for visibility)
+                            for (int dy = 0; dy < 8; dy++) {
+                                for (int dx = 0; dx < 8; dx++) {
                                     int px = screen_x + dx;
                                     int py = screen_y + dy;
                                     
@@ -402,19 +390,14 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
             }
         }
         
-        LOG_I("Software fallback rendered %d voxels", voxel_count);
         return 0;
     }
 
-    LOG_I("OSMesa mode - attempting OpenGL rendering");
-    
     // Prepare daemon rendering setup
-    LOG_I("Calling daemon_render_scene...");
     if (daemon_render_scene() != 0) {
         LOG_E("daemon_render_scene failed");
         return -1;
     }
-    LOG_I("daemon_render_scene completed");
 
     // Set up viewport
     float viewport[4] = {0, 0, g_daemon_ctx.width, g_daemon_ctx.height};
@@ -435,11 +418,9 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
     mat4_copy(cam->proj_mat, rend.proj_mat);
 
     // Render all visible layers
-    LOG_I("Getting render layers...");
     const layer_t *layer;
     for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
         if (layer->visible && layer->volume) {
-            LOG_I("Rendering layer...");
             render_volume(&rend, layer->volume, layer->material, 0);
         }
     }
@@ -450,9 +431,7 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
         memcpy(clear_color, background_color, 4);
     }
     
-    LOG_I("Submitting render...");
     render_submit(&rend, viewport, clear_color);
-    LOG_I("Render submitted");
 
     return 0;
 }
