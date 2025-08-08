@@ -42,6 +42,13 @@
 test_*
 !test_*.c
 !test_*.h
+!test_*.sh
+
+# Test utility binaries
+convert_gox_to_vox
+tests/test_png_generation
+tests/test_snoopy_generation
+tests/test_snoopy_simple
 
 # TDD test executables
 tests/tdd/example_voxel_tdd
@@ -78,11 +85,17 @@ debug_voxel*
 test_*.ply
 test_*.vox
 test_*.png
+snoopy.*
+!tests/README_SNOOPY_TEST.md
 render_output.*
 results/
 coverage/
 *.lcov
 .nyc_output/
+
+# Root directory test scripts (temporary)
+test_daemon_*.sh
+test_quick_*.sh
 
 # -------------------------------------
 # IDE & Editor Files
