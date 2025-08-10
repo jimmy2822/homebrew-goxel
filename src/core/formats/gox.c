@@ -283,16 +283,31 @@ void save_to_file(const image_t *img, const char *path)
         chunk_write_dict_value(&c, out, "box", &img->box, sizeof(img->box));
     chunk_write_finish(&c, out);
 
-    // Generate preview for .gox files (now properly supported in headless mode)
-    preview = calloc(128 * 128, 4);
-    if (preview) {
-        goxel_render_to_buf(preview, 128, 128, 4);
-        png = img_write_to_mem(preview, 128, 128, 4, &size);
-        if (png) {
-            chunk_write_all(out, "PREV", (char*)png, size);
-            free(png);
+    // Generate preview for .gox files (skip in daemon mode to avoid blocking)
+    // Detect if we're in daemon/headless mode by checking if graphics are initialized
+    bool skip_preview = false;
+    
+    // Check if graphics are initialized
+    extern goxel_t goxel;
+    if (!goxel.graphics_initialized) {
+        // No graphics means we're in headless/daemon mode
+        skip_preview = true;
+        LOG_I("Daemon mode detected (no graphics) - skipping preview generation");
+    }
+    
+    if (!skip_preview) {
+        preview = calloc(128 * 128, 4);
+        if (preview) {
+            // Try to generate preview, but don't fail if it doesn't work
+            LOG_D("Generating preview for save file");
+            goxel_render_to_buf(preview, 128, 128, 4);
+            png = img_write_to_mem(preview, 128, 128, 4, &size);
+            if (png) {
+                chunk_write_all(out, "PREV", (char*)png, size);
+                free(png);
+            }
+            free(preview);
         }
-        free(preview);
     }
 
     // Add all the blocks data into the hash table.

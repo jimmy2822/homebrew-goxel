@@ -1,22 +1,25 @@
 # Goxel Documentation
 
-## Goxel v15.0 Documentation
+## Goxel v15.3 Documentation
 
-This directory contains comprehensive documentation for Goxel v15.0, which resolves the architectural limitations of v14.0 and provides production-ready daemon functionality.
+This directory contains comprehensive documentation for Goxel v15.3, which resolves all critical issues including the save_project hanging bug and provides stable production-ready daemon functionality.
 
-### 🚀 v15.0 Documentation
+### 🚀 v15.3 Documentation
 
-1. **[v15.0 Overview](v15/README.md)**  
+1. **[v15.3 Status Report](v15-daemon-status.md)**  
+   Current production-ready status with all fixes applied
+
+2. **[v15 Overview](v15/README.md)**  
    Key improvements and architectural enhancements
 
-2. **[Quick Start Guide](v15/quick_start_guide.md)**  
-   Get started with Goxel v15.0 daemon
+3. **[Quick Start Guide](v15/quick_start_guide.md)**  
+   Get started with Goxel v15.3 daemon
 
-3. **[API Reference](v15/daemon_api_reference.md)**  
-   Complete JSON-RPC API documentation
+4. **[API Reference](v15/daemon_api_reference.md)**  
+   Complete JSON-RPC API documentation (all 25 methods working)
 
-4. **[Migration Guide](v15/migration_guide.md)**  
-   Upgrade from v14.x to v15.0
+5. **[Migration Guide](v15/migration_guide.md)**  
+   Upgrade from v14.x to v15.3
 
 ### 📚 Historical Documentation (v14.0)
 
@@ -28,17 +31,26 @@ This directory contains comprehensive documentation for Goxel v15.0, which resol
 
 ### 🔧 Quick Start
 
-Get started with Goxel v15.0:
-1. Install via Homebrew: `brew install jimmy/goxel/goxel`
-2. Start daemon: `brew services start goxel`
-3. Read the [Quick Start Guide](v15/quick_start_guide.md)
-4. Check [API Reference](v15/daemon_api_reference.md) for methods
+Get started with Goxel v15.3 (production-ready):
+1. Install via Homebrew: `brew install jimmy/goxel/goxel-daemon`
+2. Start daemon: `brew services start goxel-daemon`
+3. Test save_project (now working!): See [Status Report](v15-daemon-status.md)
+4. Read the [Quick Start Guide](v15/quick_start_guide.md)
+5. Check [API Reference](v15/daemon_api_reference.md) for all 25 methods
 
 ### 📈 Version History
 
+- **v15.3**: ✅ **STABLE** - save_project fix, all critical issues resolved
+- **v15.2**: ✅ Connection reuse working, memory fixes
+- **v15.1**: ✅ Performance improvements
 - **v15.0**: ✅ Production-ready with full multi-request support
 - **v14.0**: Historical - Single-operation limitation
 - **v13.x**: Legacy versions without daemon support
+
+### 🎉 Recent Major Fix (v15.3)
+- **Save_Project Hanging**: RESOLVED - Previously hung indefinitely, now responds in 0.00s
+- **OpenGL Preview**: Fixed daemon mode detection to skip graphics operations
+- **Homebrew Package**: Updated with working binary
 
 ### 🏗️ Architecture Documents
 

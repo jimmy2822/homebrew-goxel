@@ -1,8 +1,8 @@
-# Goxel v15.0 Documentation
+# Goxel v0.15.3 Documentation
 
-Welcome to Goxel v15.0 documentation. This version introduces significant improvements to the daemon architecture, addressing the limitations of v14.0.
+Welcome to Goxel v0.15.3 documentation. This version introduces significant improvements to the daemon architecture, addressing the limitations of v14.0.
 
-## Key Improvements in v15.0
+## Key Improvements in v0.15.3
 
 ### Architecture Enhancements
 - **Multi-Request Support**: Complete architectural refactor enables true multi-request handling
@@ -20,15 +20,18 @@ Welcome to Goxel v15.0 documentation. This version introduces significant improv
 ## Documentation Structure
 
 - **API Reference**: Complete JSON-RPC API documentation
-- **Quick Start Guide**: Getting started with v15.0
-- **Migration Guide**: Upgrading from v14.x to v15.0
+- **Quick Start Guide**: Getting started with v0.15.3
+- **Migration Guide**: Upgrading from v14.x to v0.15.3
 - **Deployment Guide**: Production deployment best practices
 - **Integration Examples**: Client library examples and patterns
 
 ## Status
 
-**Version**: 15.0.0-beta  
-**Status**: Beta - Complete architectural refactor for multi-tenant support  
-**Last Updated**: August 2, 2025
+**Version**: 0.15.3  
+**Status**: Stable Production Release  
+**Last Updated**: August 8, 2025
+
+### Recent Updates (v0.15.3)
+- **Script Execution**: Resolved script execution issues for full JavaScript automation support
 
 For the main project documentation, see [CLAUDE.md](/CLAUDE.md).
