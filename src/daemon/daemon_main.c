@@ -274,7 +274,7 @@ static void *project_cleanup_thread(void *arg)
 static void print_version(void)
 {
     printf("%s version %s\n", PROGRAM_NAME, VERSION);
-    printf("Goxel v14.0 Daemon Architecture - Process Lifecycle Management\n");
+    printf("Goxel v%s Daemon Architecture - Process Lifecycle Management\n", VERSION);
     printf("Copyright (c) 2025 Guillaume Chereau\n");
     printf("Licensed under GNU General Public License v3.0\n");
 }
