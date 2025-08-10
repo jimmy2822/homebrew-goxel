@@ -318,6 +318,7 @@ ps aux | grep goxel-daemon                      # Check if running
 - **⚡ Performance**: save_project now responds instantly (0.00s) instead of infinite hang
 - **🔧 Script Execution**: Resolved script execution issues for full JavaScript automation support
 - **📦 Homebrew Package**: Updated with fixed binary for seamless installation
+- **🔄 Version Display**: Fixed daemon architecture version display to use dynamic VERSION macro
 
 ### Previous Updates (v0.15.2)
 - **🎉 Connection Reuse**: Full persistent connection support
