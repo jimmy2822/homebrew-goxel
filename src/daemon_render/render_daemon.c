@@ -346,7 +346,7 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
         // Simple voxel rendering: iterate through all visible layers and voxels
         const layer_t *layer;
         
-        for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
+        for (layer = image->layers; layer; layer = layer->next) {
             if (!layer->visible || !layer->volume) continue;
             
             
@@ -419,7 +419,7 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
 
     // Render all visible layers
     const layer_t *layer;
-    for (layer = goxel_get_render_layers(true); layer; layer = layer->next) {
+    for (layer = image->layers; layer; layer = layer->next) {
         if (layer->visible && layer->volume) {
             render_volume(&rend, layer->volume, layer->material, 0);
         }
