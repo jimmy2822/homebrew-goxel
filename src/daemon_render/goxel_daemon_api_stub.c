@@ -40,8 +40,8 @@ const char *goxel_get_error_string(goxel_error_t error) {
 const char *goxel_get_version(int *major, int *minor, int *patch) {
     if (major) *major = 0;
     if (minor) *minor = 16;
-    if (patch) *patch = 0;
-    return "0.16.0";
+    if (patch) *patch = 1;
+    return "0.16.1";
 }
 
 bool goxel_has_feature(const char *feature) {

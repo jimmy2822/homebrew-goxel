@@ -1,6 +1,6 @@
 # Goxel Daemon v0.16 Milestone: Render Transfer Architecture
 
-**Version**: 0.16.0  
+**Version**: 0.16.1  
 **Status**: Planning  
 **Target Date**: Q1 2025  
 **Priority**: High

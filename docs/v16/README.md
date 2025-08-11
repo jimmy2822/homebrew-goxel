@@ -242,7 +242,7 @@ See [Troubleshooting Guide](troubleshooting.md) for more solutions.
 
 ## 🎯 Version Summary
 
-**v0.16.0** - Production Ready
+**v0.16.1** - Production Ready
 - Released: January 2025
 - Status: Stable
 - Compatibility: 100% backward compatible

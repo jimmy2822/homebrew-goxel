@@ -635,7 +635,7 @@ print(f"Cleaned up {cleaned} old renders")
 
 **Solution**: Ensure daemon is v0.16+ and started with default settings:
 ```bash
-./goxel-daemon --version  # Should show 0.16.0 or higher
+./goxel-daemon --version  # Should show 0.16.1 or higher
 ```
 
 ### Issue: Files not being cleaned up
@@ -668,6 +668,6 @@ if not stats['stats']['cleanup_thread_active']:
 
 ---
 
-**Version**: 0.16.0  
+**Version**: 0.16.1  
 **Last Updated**: 2025-01-10  
 **Status**: Production Ready

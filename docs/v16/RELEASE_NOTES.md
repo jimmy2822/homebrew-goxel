@@ -1,7 +1,7 @@
-# Goxel v0.16.0 Release Notes
+# Goxel v0.16.1 Release Notes
 
 **Release Date**: January 2025  
-**Codename**: "Efficient Transfer"  
+**Codename**: "Color Rendering Fix"  
 **Status**: Production Ready
 
 ---
@@ -200,15 +200,15 @@ brew services start goxel  # Start daemon
 ```bash
 git clone https://github.com/guillaumechereau/goxel.git
 cd goxel
-git checkout v0.16.0
+git checkout v0.16.1
 scons daemon=1
 ```
 
 ### Docker
 
 ```bash
-docker pull goxel/goxel:0.16.0
-docker run -v /tmp:/tmp goxel/goxel:0.16.0
+docker pull goxel/goxel:0.16.1
+docker run -v /tmp:/tmp goxel/goxel:0.16.1
 ```
 
 ---
@@ -322,10 +322,10 @@ Production Ready: ✅
 
 ---
 
-**Download**: https://github.com/guillaumechereau/goxel/releases/tag/v0.16.0  
+**Download**: https://github.com/guillaumechereau/goxel/releases/tag/v0.16.1  
 **Documentation**: https://goxel.xyz/docs  
 **Support**: https://discord.gg/goxel
 
 ---
 
-*Goxel v0.16.0 - Efficient, Scalable, Production-Ready*
+*Goxel v0.16.1 - Reliable Color Rendering, Production-Ready*
