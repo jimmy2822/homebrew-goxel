@@ -134,7 +134,8 @@ if env['daemon']:
     # Explicitly add new daemon feature files to ensure they're included
     daemon_feature_files = [
         'src/daemon/bulk_voxel_ops.c',
-        'src/daemon/color_analysis.c'
+        'src/daemon/color_analysis.c',
+        'src/daemon/render_manager.c'
     ]
     
     for feature_file in daemon_feature_files:
@@ -343,8 +344,8 @@ if target_os == 'darwin':
         env.Append(FRAMEWORKS=[
             'OpenGL', 'Cocoa', 'AppKit', 'UniformTypeIdentifiers'])
     else:
-        # Daemon needs OpenGL for rendering
-        env.Append(FRAMEWORKS=['OpenGL'])
+        # Daemon needs OpenGL for rendering and Security for random token generation
+        env.Append(FRAMEWORKS=['OpenGL', 'Security'])
     env.Append(LIBS=['m', 'objc'])
     # Fix warning in noc_file_dialog (the code should be fixed instead).
     env.Append(CCFLAGS=['-Wno-deprecated-declarations'])

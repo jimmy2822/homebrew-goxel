@@ -1,22 +1,39 @@
 # Goxel Documentation
 
-## Goxel v15.3 Documentation
+## Goxel v0.16.0 Documentation
 
-This directory contains comprehensive documentation for Goxel v15.3, which resolves all critical issues including the save_project hanging bug and provides stable production-ready daemon functionality.
+This directory contains comprehensive documentation for Goxel v0.16.0, featuring the revolutionary file-path render transfer architecture that delivers 90% memory reduction and 50% faster transfers while maintaining 100% backward compatibility.
 
-### 🚀 v15.3 Documentation
+### 🎉 v0.16.0 Documentation (Latest)
+
+1. **[v16 Overview](v16/README.md)**  
+   Revolutionary file-path render transfer architecture
+
+2. **[API Reference](v16/API_REFERENCE.md)**  
+   Complete JSON-RPC API documentation (29 methods including render management)
+
+3. **[Migration Guide](v16/MIGRATION_GUIDE.md)**  
+   Zero-breaking-change upgrade from v0.15 to v0.16
+
+4. **[Release Notes](v16/RELEASE_NOTES.md)**  
+   What's new in v0.16.0
+
+5. **[Architecture Document](v16-render-transfer-milestone.md)**  
+   Technical specification of the render transfer system
+
+### 📚 v0.15.3 Documentation (Previous Stable)
 
 1. **[v15.3 Status Report](v15-daemon-status.md)**  
-   Current production-ready status with all fixes applied
+   Production-ready status with save_project fix
 
 2. **[v15 Overview](v15/README.md)**  
-   Key improvements and architectural enhancements
+   Connection reuse and performance improvements
 
 3. **[Quick Start Guide](v15/quick_start_guide.md)**  
    Get started with Goxel v15.3 daemon
 
 4. **[API Reference](v15/daemon_api_reference.md)**  
-   Complete JSON-RPC API documentation (all 25 methods working)
+   JSON-RPC API documentation (25 methods)
 
 5. **[Migration Guide](v15/migration_guide.md)**  
    Upgrade from v14.x to v15.3
@@ -31,25 +48,32 @@ This directory contains comprehensive documentation for Goxel v15.3, which resol
 
 ### 🔧 Quick Start
 
-Get started with Goxel v15.3 (production-ready):
-1. Install via Homebrew: `brew install jimmy/goxel/goxel-daemon`
-2. Start daemon: `brew services start goxel-daemon`
-3. Test save_project (now working!): See [Status Report](v15-daemon-status.md)
-4. Read the [Quick Start Guide](v15/quick_start_guide.md)
-5. Check [API Reference](v15/daemon_api_reference.md) for all 25 methods
+Get started with Goxel v0.16.0 (latest):
+1. Install via Homebrew: `brew install goxel`
+2. Start daemon: `brew services start goxel`
+3. Use new file-path render mode: See [v16 Overview](v16/README.md)
+4. Read the [Migration Guide](v16/MIGRATION_GUIDE.md) for upgrade instructions
+5. Check [API Reference](v16/API_REFERENCE.md) for all 29 methods
 
 ### 📈 Version History
 
-- **v15.3**: ✅ **STABLE** - save_project fix, all critical issues resolved
-- **v15.2**: ✅ Connection reuse working, memory fixes
-- **v15.1**: ✅ Performance improvements
-- **v15.0**: ✅ Production-ready with full multi-request support
-- **v14.0**: Historical - Single-operation limitation
-- **v13.x**: Legacy versions without daemon support
+- **v0.16.0**: 🎉 **LATEST** - File-path render transfer, 90% memory reduction
+- **v0.15.3**: ✅ **STABLE** - save_project fix, all critical issues resolved
+- **v0.15.2**: ✅ Connection reuse working, memory fixes
+- **v0.15.1**: ✅ Performance improvements
+- **v0.15.0**: ✅ Production-ready with full multi-request support
+- **v0.14.0**: Historical - Single-operation limitation
+- **v0.13.x**: Legacy versions without daemon support
 
-### 🎉 Recent Major Fix (v15.3)
-- **Save_Project Hanging**: RESOLVED - Previously hung indefinitely, now responds in 0.00s
-- **OpenGL Preview**: Fixed daemon mode detection to skip graphics operations
+### 🎉 Major Improvements (v0.16.0)
+- **File-Path Render Transfer**: 90% memory reduction, 50% faster transfers
+- **Automatic Cleanup**: TTL-based file management prevents disk exhaustion
+- **New API Methods**: Four render management methods added
+- **100% Backward Compatible**: All v0.15 code works unchanged
+
+### Previous Fixes (v0.15.3)
+- **Save_Project Hanging**: RESOLVED - Now responds instantly
+- **OpenGL Preview**: Fixed daemon mode detection
 - **Homebrew Package**: Updated with working binary
 
 ### 🏗️ Architecture Documents

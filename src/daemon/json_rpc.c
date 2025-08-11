@@ -22,6 +22,7 @@
 #include "color_analysis.h"
 #include "worker_pool.h"
 #include "project_mutex.h"
+#include "render_manager.h"
 #include "../core/utils/json.h"
 #include "../../ext_src/json/json-builder.h"
 #include "../../ext_src/json/json.h"
@@ -1148,6 +1149,9 @@ json_rpc_result_t json_rpc_validate_response(const json_rpc_response_t *response
 // Global context for Goxel core operations
 static goxel_core_context_t *g_goxel_context = NULL;
 
+// Global render manager for file transfer architecture
+static render_manager_t *g_render_manager = NULL;
+
 /**
  * Method handler function type
  */
@@ -1185,6 +1189,11 @@ static json_rpc_response_t *handle_goxel_set_layer_visibility(const json_rpc_req
 static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_batch_operations(const json_rpc_request_t *request);
 static json_rpc_response_t *handle_goxel_execute_script(const json_rpc_request_t *request);
+
+// Render management handlers
+static json_rpc_response_t *handle_goxel_get_render_info(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_cleanup_render(const json_rpc_request_t *request);
+static json_rpc_response_t *handle_goxel_list_renders(const json_rpc_request_t *request);
 
 // Bulk voxel reading handlers
 static json_rpc_response_t *handle_goxel_get_voxels_region(const json_rpc_request_t *request);
@@ -1235,7 +1244,12 @@ static const method_registry_entry_t g_method_registry[] = {
     // Color analysis operations
     {"goxel.get_color_histogram", handle_goxel_get_color_histogram, "Generate color distribution analysis"},
     {"goxel.find_voxels_by_color", handle_goxel_find_voxels_by_color, "Find all voxels matching a color"},
-    {"goxel.get_unique_colors", handle_goxel_get_unique_colors, "List all unique colors used"}
+    {"goxel.get_unique_colors", handle_goxel_get_unique_colors, "List all unique colors used"},
+    
+    // Render management operations (Phase 2: v0.16 Render Transfer Architecture)
+    {"goxel.get_render_info", handle_goxel_get_render_info, "Get information about a specific render file"},
+    {"goxel.cleanup_render", handle_goxel_cleanup_render, "Manually cleanup a specific render file"},
+    {"goxel.list_renders", handle_goxel_list_renders, "List all active renders with their metadata"}
 };
 
 static const size_t g_method_registry_size = sizeof(g_method_registry) / sizeof(g_method_registry[0]);
@@ -1308,6 +1322,71 @@ static bool get_bool_param(const json_rpc_params_t *params, int index, const cha
 }
 
 // Helper functions removed - not used in current implementation
+
+// ============================================================================
+// RENDER TRANSFER HELPER FUNCTIONS (Phase 2: v0.16)
+// ============================================================================
+
+/**
+ * Helper function to read PNG image dimensions from file header.
+ * Returns 0 on success, -1 on failure.
+ */
+static int get_png_dimensions(const char *file_path, int *width, int *height)
+{
+    if (!file_path || !width || !height) {
+        return -1;
+    }
+    
+    FILE *fp = fopen(file_path, "rb");
+    if (!fp) {
+        return -1;
+    }
+    
+    // PNG files start with 8 bytes signature, then IHDR chunk
+    // IHDR chunk structure: length(4) + type(4) + width(4) + height(4) + ...
+    unsigned char buffer[24];
+    
+    if (fread(buffer, 1, 24, fp) != 24) {
+        fclose(fp);
+        return -1;
+    }
+    
+    fclose(fp);
+    
+    // Check PNG signature
+    if (buffer[0] != 0x89 || buffer[1] != 'P' || buffer[2] != 'N' || buffer[3] != 'G' ||
+        buffer[4] != 0x0D || buffer[5] != 0x0A || buffer[6] != 0x1A || buffer[7] != 0x0A) {
+        return -1;
+    }
+    
+    // Check IHDR chunk type
+    if (buffer[12] != 'I' || buffer[13] != 'H' || buffer[14] != 'D' || buffer[15] != 'R') {
+        return -1;
+    }
+    
+    // Extract dimensions (big-endian format)
+    *width = (buffer[16] << 24) | (buffer[17] << 16) | (buffer[18] << 8) | buffer[19];
+    *height = (buffer[20] << 24) | (buffer[21] << 16) | (buffer[22] << 8) | buffer[23];
+    
+    return 0;
+}
+
+/**
+ * Helper function to get file size.
+ */
+static long get_file_size(const char *file_path)
+{
+    if (!file_path) return -1;
+    
+    FILE *fp = fopen(file_path, "rb");
+    if (!fp) return -1;
+    
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fclose(fp);
+    
+    return size;
+}
 
 // ============================================================================
 // METHOD HANDLER IMPLEMENTATIONS
@@ -2033,26 +2112,92 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
                                              NULL, &request->id);
     }
     
-    // Parameters: output_path, width, height (matching API documentation)
-    const char *output_path = get_string_param(&request->params, 0, "output_path");
-    int width = get_int_param(&request->params, 1, "width");
-    int height = get_int_param(&request->params, 2, "height");
-    const char *format = "png"; // Default format
+    // Parse parameters with backward compatibility support
+    // Legacy format: [output_path, width, height]
+    // New format: {"width": 800, "height": 600, "options": {"return_mode": "file_path"}}
     
-    if (width <= 0) width = 512;
-    if (height <= 0) height = 512;
-    if (!format) format = "png";
+    const char *output_path = NULL;
+    int width = 512, height = 512;
+    const char *return_mode = NULL;
+    const char *format = "png";
     
-    LOG_D("Rendering scene %dx%d format %s to %s", width, height, format, output_path ? output_path : "memory");
+    // Check if using legacy array format or new object format
+    if (request->params.type == JSON_RPC_PARAMS_ARRAY) {
+        // Legacy format: [output_path, width, height]
+        output_path = get_string_param(&request->params, 0, "output_path");
+        width = get_int_param(&request->params, 1, "width");
+        height = get_int_param(&request->params, 2, "height");
+        
+        if (width <= 0) width = 512;
+        if (height <= 0) height = 512;
+        
+        LOG_D("Using legacy render_scene format");
+    } else {
+        // New object format
+        width = get_int_param(&request->params, -1, "width");
+        height = get_int_param(&request->params, -1, "height");
+        output_path = get_string_param(&request->params, -1, "output_path");
+        
+        if (width <= 0) width = 512;
+        if (height <= 0) height = 512;
+        
+        // Check for options object
+        json_value *options = NULL;
+        json_rpc_result_t opt_result = json_rpc_get_param_by_name(&request->params, "options", &options);
+        if (opt_result == JSON_RPC_SUCCESS && options && options->type == json_object) {
+            json_value *return_mode_val = json_object_get_helper(options, "return_mode");
+            if (return_mode_val && return_mode_val->type == json_string) {
+                return_mode = return_mode_val->u.string.ptr;
+            }
+        }
+        
+        LOG_D("Using new render_scene format with return_mode: %s", return_mode ? return_mode : "default");
+    }
     
+    // Determine the render mode
+    bool use_file_transfer = false;
+    char managed_file_path[1024] = {0};
+    
+    if (return_mode && strcmp(return_mode, "file_path") == 0) {
+        // New file transfer mode - use render manager
+        if (!g_render_manager) {
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 "Render manager not available, file transfer mode disabled",
+                                                 NULL, &request->id);
+        }
+        
+        use_file_transfer = true;
+        
+        // Generate managed file path
+        render_manager_error_t rm_result = render_manager_create_path(g_render_manager, 
+                                                                     NULL, // session_id - auto-generated
+                                                                     format,
+                                                                     managed_file_path,
+                                                                     sizeof(managed_file_path));
+        if (rm_result != RENDER_MGR_SUCCESS) {
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Failed to create render path: %s", 
+                     render_manager_error_string(rm_result));
+            return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                                 error_msg, NULL, &request->id);
+        }
+        
+        output_path = managed_file_path;
+        LOG_D("Using managed file path: %s", output_path);
+    }
+    
+    LOG_D("Rendering scene %dx%d format %s to %s (mode: %s)", 
+          width, height, format, output_path ? output_path : "memory", 
+          use_file_transfer ? "file_transfer" : "legacy");
+    
+    // Render the scene
     int result;
     if (output_path) {
-        // Render to file
         result = goxel_core_render_to_file(g_goxel_context, output_path, width, height, format, 90, NULL);
     } else {
-        // Render to buffer - placeholder implementation
-        result = -1; // Not implemented yet
+        result = -1; // Buffer rendering not implemented
     }
+    
     if (result != 0) {
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Failed to render scene: error code %d", result);
@@ -2060,20 +2205,97 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
                                              error_msg, NULL, &request->id);
     }
     
-    json_value *result_obj = json_object_new(4);
-    json_object_push(result_obj, "success", json_boolean_new(1));
-    json_object_push(result_obj, "width", json_integer_new(width));
-    json_object_push(result_obj, "height", json_integer_new(height));
-    json_object_push(result_obj, "format", json_string_new(format));
-    
-    if (output_path) {
-        json_object_push(result_obj, "output_path", json_string_new(output_path));
+    // Prepare response based on mode
+    if (use_file_transfer) {
+        // Register the render with the manager
+        // Extract session_id from generated path (format: render_timestamp_sessionid_hash.ext)
+        char session_id[64] = "default";
+        const char *basename = strrchr(output_path, '/');
+        if (basename) {
+            basename++; // Skip the '/'
+            // Parse: render_1754861551_auto1754861551_d01945aa.png
+            const char *second_underscore = strchr(basename, '_');
+            if (second_underscore) {
+                second_underscore = strchr(second_underscore + 1, '_');
+                if (second_underscore) {
+                    const char *third_underscore = strchr(second_underscore + 1, '_');
+                    if (third_underscore) {
+                        size_t session_len = third_underscore - (second_underscore + 1);
+                        if (session_len < sizeof(session_id) - 1) {
+                            strncpy(session_id, second_underscore + 1, session_len);
+                            session_id[session_len] = '\0';
+                        }
+                    }
+                }
+            }
+        }
+        
+        render_manager_error_t rm_result = render_manager_register(g_render_manager,
+                                                                  output_path,
+                                                                  session_id,
+                                                                  format,
+                                                                  width,
+                                                                  height);
+        if (rm_result != RENDER_MGR_SUCCESS) {
+            LOG_W("Failed to register render with manager: %s", render_manager_error_string(rm_result));
+        }
+        
+        // Get file metadata
+        long file_size = get_file_size(output_path);
+        int actual_width, actual_height;
+        if (get_png_dimensions(output_path, &actual_width, &actual_height) != 0) {
+            actual_width = width;
+            actual_height = height;
+        }
+        
+        // Calculate checksum
+        char checksum[128] = {0};
+        render_manager_error_t checksum_result = render_manager_calculate_checksum(output_path, 
+                                                                                   checksum, 
+                                                                                   sizeof(checksum));
+        if (checksum_result != RENDER_MGR_SUCCESS) {
+            snprintf(checksum, sizeof(checksum), "sha256:unavailable");
+        }
+        
+        // Create enhanced response for file transfer mode
+        json_value *result_obj = json_object_new(2);
+        json_object_push(result_obj, "success", json_boolean_new(1));
+        
+        json_value *file_obj = json_object_new(8);
+        json_object_push(file_obj, "path", json_string_new(output_path));
+        json_object_push(file_obj, "size", json_integer_new(file_size));
+        json_object_push(file_obj, "format", json_string_new(format));
+        
+        json_value *dimensions_obj = json_object_new(2);
+        json_object_push(dimensions_obj, "width", json_integer_new(actual_width));
+        json_object_push(dimensions_obj, "height", json_integer_new(actual_height));
+        json_object_push(file_obj, "dimensions", dimensions_obj);
+        
+        json_object_push(file_obj, "checksum", json_string_new(checksum));
+        
+        time_t now = time(NULL);
+        json_object_push(file_obj, "created_at", json_integer_new(now));
+        json_object_push(file_obj, "expires_at", json_integer_new(now + 3600)); // 1 hour TTL
+        
+        json_object_push(result_obj, "file", file_obj);
+        
+        return json_rpc_create_response_result(result_obj, &request->id);
     } else {
-        // TODO: Implement buffer rendering using goxel_core_render_to_buffer
-        json_object_push(result_obj, "note", json_string_new("Buffer rendering not yet implemented"));
+        // Legacy response format
+        json_value *result_obj = json_object_new(4);
+        json_object_push(result_obj, "success", json_boolean_new(1));
+        json_object_push(result_obj, "width", json_integer_new(width));
+        json_object_push(result_obj, "height", json_integer_new(height));
+        json_object_push(result_obj, "format", json_string_new(format));
+        
+        if (output_path) {
+            json_object_push(result_obj, "output_path", json_string_new(output_path));
+        } else {
+            json_object_push(result_obj, "note", json_string_new("Buffer rendering not yet implemented"));
+        }
+        
+        return json_rpc_create_response_result(result_obj, &request->id);
     }
-    
-    return json_rpc_create_response_result(result_obj, &request->id);
 }
 
 static json_rpc_response_t *handle_goxel_batch_operations(const json_rpc_request_t *request)
@@ -2937,6 +3159,163 @@ int json_rpc_add_voxel_internal(int x, int y, int z, const uint8_t rgba[4], int 
 }
 
 // ============================================================================
+// RENDER MANAGEMENT METHODS (Phase 2: v0.16 Render Transfer Architecture)
+// ============================================================================
+
+static json_rpc_response_t *handle_goxel_get_render_info(const json_rpc_request_t *request)
+{
+    if (!g_render_manager) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Render manager not available",
+                                             NULL, &request->id);
+    }
+    
+    // Get file path parameter
+    const char *file_path = get_string_param(&request->params, 0, "path");
+    if (!file_path) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify path parameter",
+                                             NULL, &request->id);
+    }
+    
+    LOG_D("Getting render info for path: %s", file_path);
+    
+    // Get render info from manager
+    render_info_t *info = NULL;
+    render_manager_error_t rm_result = render_manager_get_render_info(g_render_manager, file_path, &info);
+    
+    if (rm_result != RENDER_MGR_SUCCESS || !info) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Render not found: %s", 
+                 render_manager_error_string(rm_result));
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 20,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    // Build response with render information
+    json_value *result_obj = json_object_new(2);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    
+    json_value *render_obj = json_object_new(8);
+    json_object_push(render_obj, "path", json_string_new(info->file_path));
+    json_object_push(render_obj, "size", json_integer_new(info->file_size));
+    json_object_push(render_obj, "format", json_string_new(info->format));
+    
+    json_value *dimensions_obj = json_object_new(2);
+    json_object_push(dimensions_obj, "width", json_integer_new(info->width));
+    json_object_push(dimensions_obj, "height", json_integer_new(info->height));
+    json_object_push(render_obj, "dimensions", dimensions_obj);
+    
+    json_object_push(render_obj, "checksum", json_string_new(info->checksum ? info->checksum : "unavailable"));
+    json_object_push(render_obj, "created_at", json_integer_new(info->created_at));
+    json_object_push(render_obj, "expires_at", json_integer_new(info->expires_at));
+    json_object_push(render_obj, "session_id", json_string_new(info->session_id ? info->session_id : "unknown"));
+    
+    json_object_push(result_obj, "render", render_obj);
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_cleanup_render(const json_rpc_request_t *request)
+{
+    if (!g_render_manager) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Render manager not available",
+                                             NULL, &request->id);
+    }
+    
+    // Get file path parameter
+    const char *file_path = get_string_param(&request->params, 0, "path");
+    if (!file_path) {
+        return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
+                                             "Must specify path parameter",
+                                             NULL, &request->id);
+    }
+    
+    LOG_D("Cleaning up render: %s", file_path);
+    
+    // Remove render from manager
+    render_manager_error_t rm_result = render_manager_remove_render(g_render_manager, file_path);
+    
+    if (rm_result != RENDER_MGR_SUCCESS) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to cleanup render: %s", 
+                 render_manager_error_string(rm_result));
+        return json_rpc_create_response_error(JSON_RPC_APPLICATION_ERROR - 21,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    // Build response
+    json_value *result_obj = json_object_new(2);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "message", json_string_new("Render cleaned up successfully"));
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+static json_rpc_response_t *handle_goxel_list_renders(const json_rpc_request_t *request)
+{
+    if (!g_render_manager) {
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             "Render manager not available",
+                                             NULL, &request->id);
+    }
+    
+    LOG_D("Listing all active renders");
+    
+    // Get list of renders from manager
+    render_info_t **renders = NULL;
+    int count = 0;
+    render_manager_error_t rm_result = render_manager_list_renders(g_render_manager, &renders, &count);
+    
+    if (rm_result != RENDER_MGR_SUCCESS) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to list renders: %s", 
+                 render_manager_error_string(rm_result));
+        return json_rpc_create_response_error(JSON_RPC_INTERNAL_ERROR,
+                                             error_msg, NULL, &request->id);
+    }
+    
+    // Build response with renders array
+    json_value *result_obj = json_object_new(3);
+    json_object_push(result_obj, "success", json_boolean_new(1));
+    json_object_push(result_obj, "count", json_integer_new(count));
+    
+    json_value *renders_array = json_array_new(count);
+    
+    for (int i = 0; i < count; i++) {
+        render_info_t *info = renders[i];
+        if (!info) continue;
+        
+        json_value *render_obj = json_object_new(8);
+        json_object_push(render_obj, "path", json_string_new(info->file_path));
+        json_object_push(render_obj, "size", json_integer_new(info->file_size));
+        json_object_push(render_obj, "format", json_string_new(info->format));
+        
+        json_value *dimensions_obj = json_object_new(2);
+        json_object_push(dimensions_obj, "width", json_integer_new(info->width));
+        json_object_push(dimensions_obj, "height", json_integer_new(info->height));
+        json_object_push(render_obj, "dimensions", dimensions_obj);
+        
+        json_object_push(render_obj, "checksum", json_string_new(info->checksum ? info->checksum : "unavailable"));
+        json_object_push(render_obj, "created_at", json_integer_new(info->created_at));
+        json_object_push(render_obj, "expires_at", json_integer_new(info->expires_at));
+        json_object_push(render_obj, "session_id", json_string_new(info->session_id ? info->session_id : "unknown"));
+        
+        json_array_push(renders_array, render_obj);
+    }
+    
+    json_object_push(result_obj, "renders", renders_array);
+    
+    // Free the array (but not the render_info_t structs - they're managed by render_manager)
+    if (renders) {
+        free(renders);
+    }
+    
+    return json_rpc_create_response_result(result_obj, &request->id);
+}
+
+// ============================================================================
 // PUBLIC API FUNCTIONS
 // ============================================================================
 
@@ -2961,12 +3340,47 @@ json_rpc_result_t json_rpc_init_goxel_context(void)
         return JSON_RPC_ERROR_UNKNOWN;
     }
     
+    // Initialize render manager for file transfer architecture
+    g_render_manager = render_manager_create(NULL, 0, 0);  // Use default settings
+    if (!g_render_manager) {
+        LOG_W("Failed to initialize render manager, file transfer mode will be unavailable");
+    } else {
+        LOG_I("Render manager initialized successfully");
+        
+        // Start background cleanup thread
+        const char *env_cleanup_interval = getenv(RENDER_MANAGER_ENV_CLEANUP_INTERVAL);
+        int cleanup_interval = env_cleanup_interval ? atoi(env_cleanup_interval) : 300; // Default 5 minutes
+        
+        g_render_manager->cleanup_thread = render_manager_start_cleanup_thread(
+            g_render_manager, cleanup_interval);
+        
+        if (g_render_manager->cleanup_thread) {
+            LOG_I("Render cleanup thread started (interval: %d seconds)", cleanup_interval);
+        } else {
+            LOG_W("Failed to start render cleanup thread, manual cleanup may be required");
+        }
+    }
+    
     LOG_I("Goxel context initialized successfully");
     return JSON_RPC_SUCCESS;
 }
 
 void json_rpc_cleanup_goxel_context(void)
 {
+    // Clean up render manager
+    if (g_render_manager) {
+        // Stop cleanup thread first
+        if (g_render_manager->cleanup_thread) {
+            render_manager_stop_cleanup_thread(g_render_manager->cleanup_thread);
+            g_render_manager->cleanup_thread = NULL;
+            LOG_I("Render cleanup thread stopped");
+        }
+        
+        render_manager_destroy(g_render_manager, true);  // Clean up files on shutdown
+        g_render_manager = NULL;
+        LOG_I("Render manager cleaned up");
+    }
+    
     if (g_goxel_context) {
         goxel_core_shutdown(g_goxel_context);
         goxel_core_destroy_context(g_goxel_context);
