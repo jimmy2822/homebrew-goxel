@@ -18,7 +18,7 @@ docs/
     ├── README.md                      [✅ Overview and quick start]
     ├── API_REFERENCE.md               [✅ Complete API documentation]
     ├── MIGRATION_GUIDE.md             [✅ Zero-breaking-change migration]
-    ├── RELEASE_NOTES.md               [✅ v0.16.0 release information]
+    ├── RELEASE_NOTES.md               [✅ v0.16.1 release information]
     ├── IMPLEMENTATION_COMPLETE.md     [✅ Development summary]
     ├── performance_guide.md           [✅ Optimization guide]
     ├── troubleshooting.md             [✅ Common issues and solutions]
@@ -52,18 +52,18 @@ goxel-mcp/
 ### 1. Main Documentation Files
 
 - **docs/README.md**
-  - Updated to show v0.16.0 as current version
+  - Updated to show v0.16.1 as current version
   - Added v0.16 documentation section
   - Updated quick start for v0.16
   - Updated version history
 
 - **docs/INDEX.md**
-  - Added v0.16.0 section with all documents
+  - Added v0.16.1 section with all documents
   - Updated statistics (72 total files)
   - Fixed cross-references
 
 - **CLAUDE.md** (root)
-  - Updated version to v0.16.0
+  - Updated version to v0.16.1
   - Added new features summary
   - Updated status to "PRODUCTION READY"
   - Added file-path architecture highlights
@@ -196,7 +196,7 @@ The documentation is now:
 
 For release:
 
-1. **Tag Release**: `git tag v0.16.0`
+1. **Tag Release**: `git tag v0.16.1`
 2. **Update Website**: Publish docs to goxel.xyz
 3. **Announce**: Release notes ready
 4. **Package**: Include docs in distribution
@@ -205,7 +205,7 @@ For release:
 
 ## 🎉 Summary
 
-**Documentation deployment for Goxel v0.16.0 is COMPLETE!**
+**Documentation deployment for Goxel v0.16.1 is COMPLETE!**
 
 All documentation has been:
 - ✅ Created with comprehensive coverage
@@ -220,5 +220,5 @@ The revolutionary file-path render transfer architecture is fully documented and
 
 *Documentation prepared by: Goxel Development Team*  
 *Date: January 11, 2025*  
-*Version: 0.16.0*  
+*Version: 0.16.1*  
 *Status: Production Ready*

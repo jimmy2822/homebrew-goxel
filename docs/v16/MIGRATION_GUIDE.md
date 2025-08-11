@@ -391,7 +391,7 @@ def test_version_detection():
     client = GoxelClient('/tmp/goxel.sock')
     
     # Should detect v0.16 features
-    if daemon_version >= '0.16.0':
+    if daemon_version >= '0.16.1':
         assert client.supports_v16 == True
         print("✓ v0.16 features detected")
     else:
@@ -595,7 +595,7 @@ def check_daemon_version(daemon):
         # Try v0.16-specific method
         response = daemon.request('goxel.get_render_stats', {})
         if response.get('result', {}).get('success'):
-            return "0.16.0 or higher"
+            return "0.16.1 or higher"
     except:
         pass
     
@@ -631,6 +631,6 @@ export GOXEL_RENDER_TTL=86400000  # ~1000 days
 
 ---
 
-**Version**: 0.16.0  
+**Version**: 0.16.1  
 **Last Updated**: 2025-01-10  
 **Migration Difficulty**: Easy (Backward Compatible)

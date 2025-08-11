@@ -29,7 +29,7 @@ This guide helps resolve common issues with the v0.16 render transfer architectu
 1. Check daemon version:
 ```bash
 ./goxel-daemon --version
-# Should show 0.16.0 or higher
+# Should show 0.16.1 or higher
 ```
 
 2. Check startup logs:

@@ -1,10 +1,10 @@
 # Goxel Documentation
 
-## Goxel v0.16.0 Documentation
+## Goxel v0.16.1 Documentation
 
-This directory contains comprehensive documentation for Goxel v0.16.0, featuring the revolutionary file-path render transfer architecture that delivers 90% memory reduction and 50% faster transfers while maintaining 100% backward compatibility.
+This directory contains comprehensive documentation for Goxel v0.16.1, featuring the revolutionary file-path render transfer architecture that delivers 90% memory reduction and 50% faster transfers while maintaining 100% backward compatibility.
 
-### 🎉 v0.16.0 Documentation (Latest)
+### 🎉 v0.16.1 Documentation (Latest)
 
 1. **[v16 Overview](v16/README.md)**  
    Revolutionary file-path render transfer architecture
@@ -16,7 +16,7 @@ This directory contains comprehensive documentation for Goxel v0.16.0, featuring
    Zero-breaking-change upgrade from v0.15 to v0.16
 
 4. **[Release Notes](v16/RELEASE_NOTES.md)**  
-   What's new in v0.16.0
+   What's new in v0.16.1
 
 5. **[Architecture Document](v16-render-transfer-milestone.md)**  
    Technical specification of the render transfer system
@@ -48,7 +48,7 @@ This directory contains comprehensive documentation for Goxel v0.16.0, featuring
 
 ### 🔧 Quick Start
 
-Get started with Goxel v0.16.0 (latest):
+Get started with Goxel v0.16.1 (latest):
 1. Install via Homebrew: `brew install goxel`
 2. Start daemon: `brew services start goxel`
 3. Use new file-path render mode: See [v16 Overview](v16/README.md)
@@ -57,7 +57,7 @@ Get started with Goxel v0.16.0 (latest):
 
 ### 📈 Version History
 
-- **v0.16.0**: 🎉 **LATEST** - File-path render transfer, 90% memory reduction
+- **v0.16.1**: 🎉 **LATEST** - File-path render transfer, 90% memory reduction
 - **v0.15.3**: ✅ **STABLE** - save_project fix, all critical issues resolved
 - **v0.15.2**: ✅ Connection reuse working, memory fixes
 - **v0.15.1**: ✅ Performance improvements
@@ -65,7 +65,7 @@ Get started with Goxel v0.16.0 (latest):
 - **v0.14.0**: Historical - Single-operation limitation
 - **v0.13.x**: Legacy versions without daemon support
 
-### 🎉 Major Improvements (v0.16.0)
+### 🎉 Major Improvements (v0.16.1)
 - **File-Path Render Transfer**: 90% memory reduction, 50% faster transfers
 - **Automatic Cleanup**: TTL-based file management prevents disk exhaustion
 - **New API Methods**: Four render management methods added
