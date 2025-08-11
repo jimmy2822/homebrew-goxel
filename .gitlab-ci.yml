@@ -42,6 +42,8 @@ variables:
     git
     libtre-dev
     libglew-dev
+    libosmesa6-dev
+    libosmesa6
 
 # Build job - compile only what's needed for TDD tests
 build:tdd_tests:
@@ -74,6 +76,7 @@ test:tdd:
     - apt-get install -y -qq bc libasan6 libubsan1 
       libgl1-mesa-glx libgtk-3-0 libglfw3 libglew2.2
       libglib2.0-0 libcairo2 libpango-1.0-0
+      libosmesa6
       xvfb  # Virtual display for headless GUI
     # Start virtual display
     - export DISPLAY=:99
@@ -113,6 +116,7 @@ test:daemon_integration:
     - apt-get install -y -qq libasan6 libubsan1 
       libgl1-mesa-glx libgtk-3-0 libglfw3 libglew2.2
       libglib2.0-0 libcairo2 libpango-1.0-0
+      libosmesa6
       xvfb  # Virtual display for headless GUI
     # Start virtual display
     - export DISPLAY=:99

@@ -1,4 +1,4 @@
-# CLAUDE.md - Goxel Daemon v0.16.0
+# CLAUDE.md - Goxel Daemon v0.16.1
 
 ## 📋 Project Overview
 
@@ -13,6 +13,7 @@ Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel vox
 - ✅ **Integration Tests**: 27/27 passing (100% success rate)
 - ✅ **OSMesa Rendering**: Complete offscreen rendering with file-path optimization
 - ✅ **Production Ready**: Memory safe, thread-safe, high performance, scalable
+- ✅ **Color Rendering Fix**: Resolved voxel color display issue in rendered outputs
 
 **🌐 Official Website**: https://goxel.xyz
 
@@ -309,11 +310,16 @@ ps aux | grep goxel-daemon                      # Check if running
 
 ## 📝 Version Information
 
-**Version**: 0.16.0  
+**Version**: 0.16.1  
 **Release Date**: January 11, 2025  
 **Status**: Production Ready
 
-### 🎉 Major Features (v0.16.0)
+### 🎉 Latest Updates (v0.16.1)
+- **🎨 Color Rendering Fix**: Fixed critical bug where voxel colors weren't displayed in rendered outputs
+- **🔧 Layer Pipeline**: Corrected rendering pipeline to use correct image layers instead of global state
+- **✅ Verified Fix**: All color rendering now works correctly in both OSMesa and software fallback modes
+
+### Major Features (v0.16.0)
 - **📁 File-Path Render Transfer**: Revolutionary architecture eliminates Base64 overhead
 - **💾 90% Memory Reduction**: From 8.3MB to 830KB for Full HD renders
 - **⚡ 50% Faster Transfers**: Direct file access instead of encoding/decoding
@@ -352,5 +358,5 @@ ps aux | grep goxel-daemon                      # Check if running
 
 ---
 
-**🚀 Goxel Daemon v0.16.0 - Efficient, Scalable Voxel Automation**
-*Revolutionary file-path architecture for production-grade voxel applications*
+**🚀 Goxel Daemon v0.16.1 - Efficient, Scalable Voxel Automation**
+*Revolutionary file-path architecture with reliable color rendering for production-grade voxel applications*

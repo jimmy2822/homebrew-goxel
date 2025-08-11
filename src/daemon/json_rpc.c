@@ -1321,6 +1321,161 @@ static bool get_bool_param(const json_rpc_params_t *params, int index, const cha
     return value->u.boolean;
 }
 
+// Enhanced color parsing function that supports multiple formats
+// Supports: integers [r,g,b,a], floats [0.0-1.0], hex strings "#RRGGBBAA", arrays, objects
+static json_rpc_result_t parse_color_param(const json_rpc_params_t *params, int start_index, 
+                                           const char *color_name, uint8_t rgba[4], 
+                                           char *error_msg, size_t error_msg_size)
+{
+    if (!rgba) return JSON_RPC_ERROR_INVALID_PARAMETER;
+    
+    // Default to opaque white
+    rgba[0] = rgba[1] = rgba[2] = rgba[3] = 255;
+    
+    json_value *value = NULL;
+    json_rpc_result_t result;
+    
+    // First, try to get color as a named parameter (object-style)
+    if (params->type == JSON_RPC_PARAMS_OBJECT && color_name) {
+        result = json_rpc_get_param_by_name(params, color_name, &value);
+        if (result == JSON_RPC_SUCCESS && value) {
+            // Handle different color formats in object mode
+            
+            if (value->type == json_array && value->u.array.length >= 3) {
+                // Color as array: [r, g, b, a?]
+                for (int i = 0; i < 4 && i < (int)value->u.array.length; i++) {
+                    json_value *component = value->u.array.values[i];
+                    if (component->type == json_integer) {
+                        int val = (int)component->u.integer;
+                        rgba[i] = (uint8_t)(val < 0 ? 0 : val > 255 ? 255 : val);
+                    } else if (component->type == json_double) {
+                        // Assume float format (0.0-1.0)
+                        double val = component->u.dbl;
+                        rgba[i] = (uint8_t)(val * 255.0);
+                    }
+                }
+                if (value->u.array.length == 3) rgba[3] = 255; // Default alpha
+                return JSON_RPC_SUCCESS;
+            }
+            
+            else if (value->type == json_string) {
+                // Hex color string: "#RRGGBB" or "#RRGGBBAA"
+                const char *hex = value->u.string.ptr;
+                if (hex && hex[0] == '#') {
+                    int len = strlen(hex);
+                    if (len == 7 || len == 9) { // #RRGGBB or #RRGGBBAA
+                        unsigned int r, g, b, a = 255;
+                        if (len == 7) {
+                            if (sscanf(hex, "#%02x%02x%02x", &r, &g, &b) == 3) {
+                                rgba[0] = (uint8_t)r; rgba[1] = (uint8_t)g; 
+                                rgba[2] = (uint8_t)b; rgba[3] = (uint8_t)a;
+                                return JSON_RPC_SUCCESS;
+                            }
+                        } else {
+                            if (sscanf(hex, "#%02x%02x%02x%02x", &r, &g, &b, &a) == 4) {
+                                rgba[0] = (uint8_t)r; rgba[1] = (uint8_t)g;
+                                rgba[2] = (uint8_t)b; rgba[3] = (uint8_t)a;
+                                return JSON_RPC_SUCCESS;
+                            }
+                        }
+                    }
+                }
+                if (error_msg) snprintf(error_msg, error_msg_size, "Invalid hex color format");
+                return JSON_RPC_ERROR_INVALID_PARAMETER;
+            }
+            
+            else if (value->type == json_object) {
+                // Color as object: {"r": 255, "g": 0, "b": 0, "a": 255}
+                json_value *r_val = json_object_get_helper(value, "r");
+                json_value *g_val = json_object_get_helper(value, "g");
+                json_value *b_val = json_object_get_helper(value, "b");
+                json_value *a_val = json_object_get_helper(value, "a");
+                
+                if (r_val && g_val && b_val) {
+                    rgba[0] = (r_val->type == json_integer) ? (uint8_t)r_val->u.integer : 
+                              (r_val->type == json_double) ? (uint8_t)(r_val->u.dbl * 255.0) : 0;
+                    rgba[1] = (g_val->type == json_integer) ? (uint8_t)g_val->u.integer :
+                              (g_val->type == json_double) ? (uint8_t)(g_val->u.dbl * 255.0) : 0;
+                    rgba[2] = (b_val->type == json_integer) ? (uint8_t)b_val->u.integer :
+                              (b_val->type == json_double) ? (uint8_t)(b_val->u.dbl * 255.0) : 0;
+                    rgba[3] = a_val ? 
+                              ((a_val->type == json_integer) ? (uint8_t)a_val->u.integer :
+                               (a_val->type == json_double) ? (uint8_t)(a_val->u.dbl * 255.0) : 255) : 255;
+                    return JSON_RPC_SUCCESS;
+                }
+                if (error_msg) snprintf(error_msg, error_msg_size, "Color object missing r, g, b fields");
+                return JSON_RPC_ERROR_INVALID_PARAMETER;
+            }
+        }
+    }
+    
+    // Fall back to positional parameters (array-style): [x, y, z, r, g, b, a]
+    if (params->type == JSON_RPC_PARAMS_ARRAY) {
+        bool any_found = false;
+        
+        for (int i = 0; i < 4; i++) {
+            json_value *component = NULL;
+            result = json_rpc_get_param_by_index(params, start_index + i, &component);
+            
+            if (result == JSON_RPC_SUCCESS && component) {
+                any_found = true;
+                
+                if (component->type == json_integer) {
+                    int val = (int)component->u.integer;
+                    rgba[i] = (uint8_t)(val < 0 ? 0 : val > 255 ? 255 : val);
+                } else if (component->type == json_double) {
+                    // Handle float values (assume 0.0-1.0 range)
+                    double val = component->u.dbl;
+                    if (val >= 0.0 && val <= 1.0) {
+                        rgba[i] = (uint8_t)(val * 255.0);
+                    } else {
+                        // Assume integer range passed as float
+                        rgba[i] = (uint8_t)(val < 0 ? 0 : val > 255 ? 255 : (int)val);
+                    }
+                } else if (component->type == json_string && i == 0) {
+                    // Allow hex string as first color parameter
+                    const char *hex = component->u.string.ptr;
+                    if (hex && hex[0] == '#') {
+                        int len = strlen(hex);
+                        if (len == 7 || len == 9) {
+                            unsigned int r, g, b, a = 255;
+                            if (len == 7) {
+                                if (sscanf(hex, "#%02x%02x%02x", &r, &g, &b) == 3) {
+                                    rgba[0] = (uint8_t)r; rgba[1] = (uint8_t)g;
+                                    rgba[2] = (uint8_t)b; rgba[3] = (uint8_t)a;
+                                    return JSON_RPC_SUCCESS;
+                                }
+                            } else {
+                                if (sscanf(hex, "#%02x%02x%02x%02x", &r, &g, &b, &a) == 4) {
+                                    rgba[0] = (uint8_t)r; rgba[1] = (uint8_t)g;
+                                    rgba[2] = (uint8_t)b; rgba[3] = (uint8_t)a;
+                                    return JSON_RPC_SUCCESS;
+                                }
+                            }
+                        }
+                    }
+                    if (error_msg) snprintf(error_msg, error_msg_size, "Invalid hex color in array");
+                    return JSON_RPC_ERROR_INVALID_PARAMETER;
+                } else {
+                    // Unknown type, use default
+                    rgba[i] = (i == 3) ? 255 : 0; // Default alpha to 255, RGB to 0
+                }
+            } else {
+                // Parameter not found, use default
+                rgba[i] = (i == 3) ? 255 : 0; // Default alpha to 255, RGB to 0
+            }
+        }
+        
+        if (any_found) {
+            return JSON_RPC_SUCCESS;
+        }
+    }
+    
+    // No color parameters found, use defaults
+    if (error_msg) snprintf(error_msg, error_msg_size, "No color parameters found");
+    return JSON_RPC_SUCCESS; // Still success with defaults
+}
+
 // Helper functions removed - not used in current implementation
 
 // ============================================================================
@@ -1574,32 +1729,31 @@ static json_rpc_response_t *handle_goxel_add_voxel(const json_rpc_request_t *req
                                              NULL, &request->id);
     }
     
-    // Parameters: x, y, z, r, g, b, a (optional, default 255), layer_id (optional, default 0)
+    // Enhanced parameter parsing supporting multiple formats:
+    // Array format: [x, y, z, r, g, b, a?, layer_id?] or [x, y, z, "#RRGGBBAA", layer_id?]
+    // Object format: {"x": 10, "y": 10, "z": 10, "color": [255, 0, 0, 255]} or {"x": 10, "y": 10, "z": 10, "color": "#FF0000FF"}
+    
     int x = get_int_param(&request->params, 0, "x");
     int y = get_int_param(&request->params, 1, "y");
     int z = get_int_param(&request->params, 2, "z");
-    int r = get_int_param(&request->params, 3, "r");
-    int g = get_int_param(&request->params, 4, "g");
-    int b = get_int_param(&request->params, 5, "b");
-    int a = get_int_param(&request->params, 6, "a");
-    int layer_id = get_int_param(&request->params, 7, "layer_id");
+    int layer_id = get_int_param(&request->params, 7, "layer_id"); // Default to 0 if not found
     
-    // Validate color values
-    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+    // Use flexible color parsing
+    uint8_t rgba[4];
+    char color_error[256] = {0};
+    json_rpc_result_t color_result = parse_color_param(&request->params, 3, "color", rgba, 
+                                                       color_error, sizeof(color_error));
+    
+    if (color_result != JSON_RPC_SUCCESS) {
         return json_rpc_create_response_error(JSON_RPC_INVALID_PARAMS,
-                                             "Invalid color values (must be 0-255)",
+                                             color_error[0] ? color_error : "Invalid color format",
                                              NULL, &request->id);
     }
     
-    if (a <= 0) a = 255; // Default alpha
-    if (a > 255) a = 255;
-    
-    uint8_t rgba[4] = {(uint8_t)r, (uint8_t)g, (uint8_t)b, (uint8_t)a};
-    
     LOG_D("Adding voxel at (%d, %d, %d) with color (%d, %d, %d, %d) to layer %d", 
-          x, y, z, r, g, b, a, layer_id);
+          x, y, z, rgba[0], rgba[1], rgba[2], rgba[3], layer_id);
     
-    int result = goxel_core_add_voxel(g_goxel_context, x, y, z, (uint8_t*)rgba, layer_id);
+    int result = goxel_core_add_voxel(g_goxel_context, x, y, z, rgba, layer_id);
     if (result != 0) {
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Failed to add voxel: error code %d", result);
@@ -1615,10 +1769,10 @@ static json_rpc_response_t *handle_goxel_add_voxel(const json_rpc_request_t *req
     json_object_push(result_obj, "layer_id", json_integer_new(layer_id));
     
     json_value *color_obj = json_array_new(4);
-    json_array_push(color_obj, json_integer_new(r));
-    json_array_push(color_obj, json_integer_new(g));
-    json_array_push(color_obj, json_integer_new(b));
-    json_array_push(color_obj, json_integer_new(a));
+    json_array_push(color_obj, json_integer_new(rgba[0]));
+    json_array_push(color_obj, json_integer_new(rgba[1]));
+    json_array_push(color_obj, json_integer_new(rgba[2]));
+    json_array_push(color_obj, json_integer_new(rgba[3]));
     json_object_push(result_obj, "color", color_obj);
     
     return json_rpc_create_response_result(result_obj, &request->id);
