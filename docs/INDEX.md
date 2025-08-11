@@ -58,6 +58,15 @@ Located in `v14/` directory:
 - **[testing.md](v14/testing.md)** - Testing guidelines
 - **[troubleshooting.md](v14/troubleshooting.md)** - Common issues and solutions
 
+### v0.16.0 - Current Release
+Located in `v16/` directory:
+- **[README.md](v16/README.md)** - v0.16.0 overview and quick start
+- **[API_REFERENCE.md](v16/API_REFERENCE.md)** - Complete API documentation (29 methods)
+- **[MIGRATION_GUIDE.md](v16/MIGRATION_GUIDE.md)** - Zero-breaking-change migration guide
+- **[RELEASE_NOTES.md](v16/RELEASE_NOTES.md)** - What's new in v0.16.0
+- **[IMPLEMENTATION_COMPLETE.md](v16/IMPLEMENTATION_COMPLETE.md)** - Development summary
+- **[v16-render-transfer-milestone.md](v16-render-transfer-milestone.md)** - Architecture specification
+
 ### v14.6 - Future Development
 Located in `v14.6/` directory:
 - **[README.md](v14.6/README.md)** - v14.6 overview
@@ -122,9 +131,9 @@ Located in `v14.6/templates/`:
 
 ## 📊 Document Statistics
 
-- Total documentation files: 66
-- Main categories: 6 (Root, Analysis, Demos, v14, v14.6, Templates)
-- Most recent update: August 2, 2025 (daemon memory fixes)
+- Total documentation files: 72
+- Main categories: 7 (Root, Analysis, Demos, v14, v14.6, v15, v16, Templates)
+- Most recent update: January 11, 2025 (v0.16.0 render transfer architecture)
 
 ---
 
