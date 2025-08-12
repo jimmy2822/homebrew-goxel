@@ -36,8 +36,8 @@ extern "C" {
 
 #define GOXEL_VERSION_MAJOR 0
 #define GOXEL_VERSION_MINOR 16
-#define GOXEL_VERSION_PATCH 1
-#define GOXEL_VERSION_STRING "0.16.1"
+#define GOXEL_VERSION_PATCH 3
+#define GOXEL_VERSION_STRING "0.16.3"
 #define GOXEL_API_VERSION 1
 
 // ============================================================================
