@@ -550,7 +550,7 @@ bool goxel_core_is_read_only(goxel_core_context_t *ctx)
 }
 
 // Rendering operations
-int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset)
+int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset, const uint8_t *background_color)
 {
     if (!ctx || !output_file || !ctx->image) return -1;
     
@@ -562,6 +562,51 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
         return -1;
     }
     
+    // CRITICAL FIX: Always update image bounding box from layer voxels before rendering
+    // This ensures the camera is positioned correctly regardless of existing camera state
+    int aabb[2][3] = {{999999, 999999, 999999}, {-999999, -999999, -999999}};
+    bool has_voxels = false;
+    
+    const layer_t *layer;
+    for (layer = ctx->image->layers; layer; layer = layer->next) {
+        if (layer->visible && layer->volume) {
+            int layer_bbox[2][3];
+            volume_get_bbox(layer->volume, layer_bbox, true);
+            if (layer_bbox[0][0] < layer_bbox[1][0]) { // Valid bounding box
+                has_voxels = true;
+                for (int i = 0; i < 3; i++) {
+                    if (layer_bbox[0][i] < aabb[0][i]) aabb[0][i] = layer_bbox[0][i];
+                    if (layer_bbox[1][i] > aabb[1][i]) aabb[1][i] = layer_bbox[1][i];
+                }
+            }
+        }
+    }
+    
+    if (has_voxels) {
+        // Convert AABB to 4x4 box matrix
+        float center[3] = {
+            (aabb[0][0] + aabb[1][0]) / 2.0f,
+            (aabb[0][1] + aabb[1][1]) / 2.0f,
+            (aabb[0][2] + aabb[1][2]) / 2.0f
+        };
+        float size[3] = {
+            aabb[1][0] - aabb[0][0],
+            aabb[1][1] - aabb[0][1], 
+            aabb[1][2] - aabb[0][2]
+        };
+        
+        mat4_set_identity(ctx->image->box);
+        ctx->image->box[0][0] = size[0];
+        ctx->image->box[1][1] = size[1];
+        ctx->image->box[2][2] = size[2];
+        ctx->image->box[3][0] = center[0];
+        ctx->image->box[3][1] = center[1];
+        ctx->image->box[3][2] = center[2];
+        
+        LOG_I("FIXED: Updated image box: center=[%.1f,%.1f,%.1f] size=[%.1f,%.1f,%.1f]",
+              center[0], center[1], center[2], size[0], size[1], size[2]);
+    }
+    
     // Use the active camera or create a default one
     camera_t *camera = ctx->image->active_camera;
     if (!camera) {
@@ -571,17 +616,26 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
             LOG_E("Failed to create temporary camera");
             return -1;
         }
-        
-        // Set up camera to view the scene
-        camera_fit_box(camera, ctx->image->box);
     }
     
-    // Set up background color (light gray)
-    uint8_t background_color[4] = {240, 240, 240, 255};
+    // Always fit camera to the corrected bounding box (whether existing or new camera)
+    camera_fit_box(camera, ctx->image->box);
+    
+    // Set up background color - use provided color or default light gray
+    uint8_t default_bg_color[4] = {240, 240, 240, 255};
+    const uint8_t *bg_color = background_color ? background_color : default_bg_color;
+    
+    if (background_color) {
+        LOG_I("Using custom background color: [%d,%d,%d,%d]", 
+              background_color[0], background_color[1], background_color[2], background_color[3]);
+    } else {
+        LOG_I("Using default background color: [%d,%d,%d,%d]",
+              default_bg_color[0], default_bg_color[1], default_bg_color[2], default_bg_color[3]);
+    }
     
     // Render the scene using headless rendering
     LOG_I("About to call daemon_render_scene_with_camera...");
-    int render_result = daemon_render_scene_with_camera(ctx->image, camera, background_color);
+    int render_result = daemon_render_scene_with_camera(ctx->image, camera, bg_color);
     LOG_I("daemon_render_scene_with_camera returned: %d", render_result);
     
     // Clean up temporary camera if we created one

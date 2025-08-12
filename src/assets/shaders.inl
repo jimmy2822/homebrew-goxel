@@ -470,7 +470,7 @@
     "    vec4 base_color = u_m_base_color * v_color;\n"
     "\n"
     "#ifdef MATERIAL_UNLIT\n"
-    "    gl_FragColor = vec4(sqrt(base_color.rgb), base_color.a);\n"
+    "    gl_FragColor = base_color;\n"
     "    return;\n"
     "#endif\n"
     "\n"
