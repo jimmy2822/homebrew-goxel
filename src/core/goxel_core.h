@@ -129,7 +129,7 @@ int goxel_core_rename_layer(goxel_core_context_t *ctx, int layer_id, const char 
 void goxel_core_debug_layers(goxel_core_context_t *ctx);
 
 // Rendering operations  
-int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset);
+int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file, int width, int height, const char *format, int quality, const char *camera_preset, const uint8_t *background_color);
 int goxel_core_render_to_buffer(goxel_core_context_t *ctx, int width, int height, const char *camera_preset, void **buffer, size_t *buffer_size, const char *format);
 
 // Export operations

@@ -2274,6 +2274,8 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
     int width = 512, height = 512;
     const char *return_mode = NULL;
     const char *format = "png";
+    uint8_t background_color[4] = {240, 240, 240, 255}; // Default gray
+    bool has_custom_background = false;
     
     // Check if using legacy array format or new object format
     if (request->params.type == JSON_RPC_PARAMS_ARRAY) {
@@ -2302,6 +2304,26 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
             json_value *return_mode_val = json_object_get_helper(options, "return_mode");
             if (return_mode_val && return_mode_val->type == json_string) {
                 return_mode = return_mode_val->u.string.ptr;
+            }
+            
+            // Parse background_color array [r, g, b, a]
+            json_value *bg_color_val = json_object_get_helper(options, "background_color");
+            if (bg_color_val && bg_color_val->type == json_array && bg_color_val->u.array.length >= 3) {
+                // Extract RGB(A) values
+                for (int i = 0; i < 4 && i < bg_color_val->u.array.length; i++) {
+                    json_value *color_val = bg_color_val->u.array.values[i];
+                    if (color_val && color_val->type == json_integer) {
+                        int color_comp = (int)color_val->u.integer;
+                        background_color[i] = (uint8_t)(color_comp < 0 ? 0 : color_comp > 255 ? 255 : color_comp);
+                    }
+                }
+                // Default alpha to 255 if not provided
+                if (bg_color_val->u.array.length < 4) {
+                    background_color[3] = 255;
+                }
+                has_custom_background = true;
+                LOG_D("Custom background color: [%d,%d,%d,%d]", 
+                      background_color[0], background_color[1], background_color[2], background_color[3]);
             }
         }
         
@@ -2347,7 +2369,7 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
     // Render the scene
     int result;
     if (output_path) {
-        result = goxel_core_render_to_file(g_goxel_context, output_path, width, height, format, 90, NULL);
+        result = goxel_core_render_to_file(g_goxel_context, output_path, width, height, format, 90, NULL, has_custom_background ? background_color : NULL);
     } else {
         result = -1; // Buffer rendering not implemented
     }

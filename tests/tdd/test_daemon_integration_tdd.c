@@ -4,6 +4,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <errno.h>
+#include <string.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <fcntl.h>
@@ -11,6 +12,7 @@
 
 #define TEST_SOCKET_PATH "/tmp/goxel_integration_test.sock"
 #define DAEMON_PATH "../../goxel-daemon"
+#define DAEMON_PATH_ALT "./goxel-daemon"  // Alternative path for CI
 #define BUFFER_SIZE 4096
 
 // Helper to remove socket file if it exists
@@ -28,8 +30,12 @@ pid_t start_daemon() {
     pid_t pid = fork();
     if (pid == 0) {
         // Child process - run daemon
+        // Try primary path first
         execl(DAEMON_PATH, "goxel-daemon", "--foreground", "--socket", TEST_SOCKET_PATH, NULL);
-        // If execl fails
+        // If that fails, try alternative path (for CI)
+        execl(DAEMON_PATH_ALT, "goxel-daemon", "--foreground", "--socket", TEST_SOCKET_PATH, NULL);
+        // If both fail, exit
+        fprintf(stderr, "Failed to start daemon: %s\n", strerror(errno));
         exit(1);
     }
     return pid;
@@ -130,7 +136,14 @@ int test_client_connects_to_daemon() {
     cleanup_socket();
     
     pid_t daemon_pid = start_daemon();
-    usleep(100000); // Let daemon start
+    usleep(500000); // Give daemon more time to start (500ms)
+    
+    // Wait for socket to be created with timeout
+    int wait_count = 0;
+    while (!socket_exists() && wait_count < 10) {
+        usleep(100000); // Wait 100ms
+        wait_count++;
+    }
     
     int sock = connect_to_daemon();
     TEST_ASSERT(sock >= 0, "Client should connect to daemon successfully");
@@ -146,7 +159,14 @@ int test_first_request_succeeds() {
     cleanup_socket();
     
     pid_t daemon_pid = start_daemon();
-    usleep(100000);
+    usleep(500000); // Give daemon more time to start
+    
+    // Wait for socket to be created
+    int wait_count = 0;
+    while (!socket_exists() && wait_count < 10) {
+        usleep(100000);
+        wait_count++;
+    }
     
     int sock = connect_to_daemon();
     TEST_ASSERT(sock >= 0, "Should connect to daemon");
@@ -185,7 +205,14 @@ int test_multiple_clients_connect() {
     cleanup_socket();
     
     pid_t daemon_pid = start_daemon();
-    usleep(100000);
+    usleep(500000); // Give daemon more time to start
+    
+    // Wait for socket to be created
+    int wait_count = 0;
+    while (!socket_exists() && wait_count < 10) {
+        usleep(100000);
+        wait_count++;
+    }
     
     int sock1 = connect_to_daemon();
     TEST_ASSERT(sock1 >= 0, "First client should connect");
@@ -236,7 +263,14 @@ int test_malformed_json_handling() {
     cleanup_socket();
     
     pid_t daemon_pid = start_daemon();
-    usleep(100000);
+    usleep(500000); // Give daemon more time to start
+    
+    // Wait for socket to be created
+    int wait_count = 0;
+    while (!socket_exists() && wait_count < 10) {
+        usleep(100000);
+        wait_count++;
+    }
     
     int sock = connect_to_daemon();
     TEST_ASSERT(sock >= 0, "Should connect to daemon");
@@ -261,7 +295,14 @@ int test_large_payload_handling() {
     cleanup_socket();
     
     pid_t daemon_pid = start_daemon();
-    usleep(100000);
+    usleep(500000); // Give daemon more time to start
+    
+    // Wait for socket to be created
+    int wait_count = 0;
+    while (!socket_exists() && wait_count < 10) {
+        usleep(100000);
+        wait_count++;
+    }
     
     int sock = connect_to_daemon();
     TEST_ASSERT(sock >= 0, "Should connect to daemon");

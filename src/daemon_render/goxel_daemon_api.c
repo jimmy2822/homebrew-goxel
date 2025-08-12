@@ -690,7 +690,7 @@ goxel_error_t goxel_render_to_file(goxel_context_t *ctx, const char *output_path
     
     int result = goxel_core_render_to_file(ctx->core, output_path, 
                                           options->width, options->height,
-                                          format_str, options->quality, camera_str);
+                                          format_str, options->quality, camera_str, NULL);
     if (result != 0) {
         set_last_error(ctx, "Failed to render to file '%s': %d", output_path, result);
         pthread_mutex_unlock(&ctx->mutex);

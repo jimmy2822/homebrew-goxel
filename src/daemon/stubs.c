@@ -125,7 +125,8 @@ int sys_list_dir(const char *path, sys_dir_entry_t **entries)
     return 0;
 }
 
-// Render functions
+#ifndef OSMESA_RENDERING
+// Render functions (only for daemon builds without OSMesa)
 void render_get_light_dir(float out[3])
 {
     // Default light direction
@@ -133,6 +134,7 @@ void render_get_light_dir(float out[3])
     out[1] = 0.577f;
     out[2] = 0.577f;
 }
+#endif
 
 // Action system stub
 void action_register(const action_t *action, int idx)
@@ -142,7 +144,8 @@ void action_register(const action_t *action, int idx)
     (void)idx;
 }
 
-// Render functions
+#ifndef OSMESA_RENDERING
+// Render functions (only for daemon builds without OSMesa)
 void render_submit(renderer_t *rend, const float viewport[4],
                    const uint8_t clear_color[4])
 {
@@ -161,3 +164,4 @@ void render_volume(renderer_t *rend, const volume_t *volume,
     (void)material;
     (void)effects;
 }
+#endif

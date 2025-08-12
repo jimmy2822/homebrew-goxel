@@ -443,7 +443,13 @@ static void render_tile_(renderer_t *rend, volume_t *volume,
 
     item = get_item_for_tile(volume, iter, tile_pos, effects,
                               rend->settings.smoothness);
-    if (item->nb_elements == 0) return;
+    // DEEP DEBUG: Check if tile has geometry
+    LOG_I("Tile [%d,%d,%d]: nb_elements=%d, vertex_buffer=%d", 
+          tile_pos[0], tile_pos[1], tile_pos[2], item->nb_elements, item->vertex_buffer);
+    if (item->nb_elements == 0) {
+        LOG_I("Skipping tile [%d,%d,%d] - no elements", tile_pos[0], tile_pos[1], tile_pos[2]);
+        return;
+    }
     GL(glBindBuffer(GL_ARRAY_BUFFER, item->vertex_buffer));
     if (gl_has_uniform(shader, "u_tile_id")) {
         tile_id_f[1] = ((tile_id >> 8) & 0xff) / 255.0;
@@ -466,9 +472,12 @@ static void render_tile_(renderer_t *rend, volume_t *volume,
     gl_update_uniform(shader, "u_model", tile_model);
     if (item->size == 4) {
         if (!(effects & (EFFECT_GRID | EFFECT_EDGES))) {
+            LOG_I("Drawing GL_TRIANGLES: %d elements (%d triangles)", 
+                  item->nb_elements * 6, item->nb_elements * 6 / 3);
             GL(glDrawElements(GL_TRIANGLES, item->nb_elements * 6,
                               GL_UNSIGNED_SHORT, 0));
         } else {
+            LOG_I("Drawing GL_LINES: %d elements", item->nb_elements * 8);
             gl_update_uniform(shader, "u_l_amb", 0.0);
             gl_update_uniform(shader, "u_z_ofs", -0.001);
             GL(glDrawElements(GL_LINES, item->nb_elements * 8,
@@ -478,6 +487,7 @@ static void render_tile_(renderer_t *rend, volume_t *volume,
             gl_update_uniform(shader, "u_z_ofs", 0.0);
         }
     } else {
+        LOG_I("Drawing GL_TRIANGLES (arrays): %d vertices", item->nb_elements * item->size);
         GL(glDrawArrays(GL_TRIANGLES, 0, item->nb_elements * item->size));
     }
 
@@ -606,6 +616,15 @@ static void render_volume_(renderer_t *rend, volume_t *volume,
             {}
         };
         shader = shader_get("volume", defines, ATTR_NAMES, shader_init);
+    }
+    
+    // DEEP DEBUG: Check shader compilation
+    if (!shader || !shader->prog) {
+        LOG_E("CRITICAL: Shader compilation failed! shader=%p", shader);
+        if (shader) LOG_E("Shader program ID: %d", shader->prog);
+        return;
+    } else {
+        LOG_I("Shader compiled successfully: program ID %d", shader->prog);
     }
 
     GL(glEnable(GL_DEPTH_TEST));
