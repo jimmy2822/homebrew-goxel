@@ -4,8 +4,8 @@ class GoxelDaemon < Formula
   version "0.17.2"
   
   # Use local file URL for development
-  url "file:///Users/jimmy/jimmy_side_projects/goxel/homebrew-goxel/goxel-daemon-0.17.2.tar.gz"
-  sha256 "27ea463009e748b36199464ef8c95b9e2b6542e4ff39376b6b6291128bf3bf7b"
+  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-daemon-0.17.2.tar.gz"
+  sha256 "66171642c7f452af05167f2a4e2558d92a2a58635d47f63c26b2525d1f8b7b3b"
   
   # For production release, use GitHub URL:
   # url "https://github.com/jimmy2822/goxel/releases/download/v0.17.2/goxel-daemon-0.17.2.tar.gz"
@@ -13,7 +13,7 @@ class GoxelDaemon < Formula
   license "GPL-3.0-or-later"
   
   depends_on "libpng"
-  depends_on "osmesa"
+  depends_on "mesa"
   depends_on "pkg-config" => :build
   depends_on "scons" => :build
 
