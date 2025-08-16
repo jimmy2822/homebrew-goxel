@@ -19,6 +19,7 @@
 #include "goxel_core.h"
 #include "../goxel.h"  // For function prototypes and constants
 #include "../daemon_render/render_daemon.h"  // For daemon rendering functions
+#include "../daemon_render/camera_daemon.h"  // For camera preset functions
 #include "file_format.h"  // For file format handling
 #include "../script.h"  // For script execution functions
 #include <errno.h>
@@ -26,6 +27,8 @@
 #include <assert.h>
 #include <unistd.h>  // For close() and unlink()
 #include <stdlib.h>  // For mkstemp()
+#include <math.h>    // For M_PI
+#include <stdbool.h> // For bool type
 
 // Helper function to check read-only mode
 static int check_read_only(goxel_core_context_t *ctx, const char *operation)
@@ -607,19 +610,79 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
               center[0], center[1], center[2], size[0], size[1], size[2]);
     }
     
-    // Use the active camera or create a default one
-    camera_t *camera = ctx->image->active_camera;
-    if (!camera) {
-        // Create a temporary camera for rendering
-        camera = camera_new("temp_camera");
-        if (!camera) {
-            LOG_E("Failed to create temporary camera");
-            return -1;
-        }
+    // Always create a new camera when a preset is specified, otherwise use existing
+    camera_t *camera = NULL;
+    bool temp_camera = false;
+    
+    if (camera_preset && camera_preset[0]) {
+        LOG_I("Creating new camera for preset: %s", camera_preset);
+        camera = camera_new("temp_preset_cam");
+        temp_camera = true;
+    } else if (ctx->image->active_camera) {
+        LOG_I("Using existing active camera");
+        camera = ctx->image->active_camera;
+    } else {
+        LOG_I("Creating temporary camera for rendering");
+        camera = camera_new("temp_render_cam");
+        temp_camera = true;
     }
     
-    // Always fit camera to the corrected bounding box (whether existing or new camera)
+    if (!camera) {
+        LOG_E("Failed to create camera");
+        return -1;
+    }
+    
+    // First fit camera to get the proper distance
     camera_fit_box(camera, ctx->image->box);
+    
+    // Apply camera preset if specified (will override the rotation but keep distance)
+    if (camera_preset && camera_preset[0]) {
+        float saved_dist = camera->dist;  // Save distance from fit_box
+        LOG_I("Applying camera preset: %s with distance %.2f", camera_preset, saved_dist);
+        
+        // Reset camera matrix to identity
+        mat4_set_identity(camera->mat);
+        
+        // Set the distance
+        camera->dist = saved_dist;
+        mat4_itranslate(camera->mat, 0, 0, saved_dist);
+        
+        // Apply the rotation for the preset
+        const char *angles[] = {"front", "back", "left", "right", "top", "bottom", "isometric"};
+        float rotations[][2] = {
+            {0, 0},           // front - no rotation
+            {M_PI, 0},        // back - 180° around Z
+            {M_PI/2, 0},      // left - 90° around Z
+            {-M_PI/2, 0},     // right - -90° around Z
+            {0, -M_PI/2},     // top - -90° around X (look down)
+            {0, M_PI/2},      // bottom - 90° around X (look up)
+            {M_PI/4, -M_PI/6} // isometric - classic 3/4 view
+        };
+        
+        bool found = false;
+        for (int i = 0; i < 7; i++) {
+            if (strcmp(camera_preset, angles[i]) == 0) {
+                LOG_I("Applying rotation for %s: rz=%.2f, rx=%.2f", camera_preset, rotations[i][0], rotations[i][1]);
+                
+                // Debug: Print camera matrix before rotation
+                LOG_I("Camera matrix before rotation: [%.2f,%.2f,%.2f,%.2f]", 
+                      camera->mat[3][0], camera->mat[3][1], camera->mat[3][2], camera->mat[3][3]);
+                
+                camera_turntable(camera, rotations[i][0], rotations[i][1]);
+                
+                // Debug: Print camera matrix after rotation
+                LOG_I("Camera matrix after rotation: [%.2f,%.2f,%.2f,%.2f]", 
+                      camera->mat[3][0], camera->mat[3][1], camera->mat[3][2], camera->mat[3][3]);
+                
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            LOG_W("Unknown camera preset '%s', using default view", camera_preset);
+        }
+    }
     
     // Set up background color - use provided color or default light gray
     uint8_t default_bg_color[4] = {240, 240, 240, 255};
@@ -639,7 +702,7 @@ int goxel_core_render_to_file(goxel_core_context_t *ctx, const char *output_file
     LOG_I("daemon_render_scene_with_camera returned: %d", render_result);
     
     // Clean up temporary camera if we created one
-    if (camera != ctx->image->active_camera) {
+    if (temp_camera) {
         camera_delete(camera);
     }
     

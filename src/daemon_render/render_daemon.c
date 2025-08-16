@@ -525,14 +525,23 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
     // Set camera matrices
     camera_t *cam = (camera_t*)camera; // Remove const for camera_update
     cam->aspect = (float)g_daemon_ctx.width / g_daemon_ctx.height;
+    
+    // DEBUG: Print camera matrix BEFORE update
+    LOG_I("Camera matrix BEFORE update: [%.2f,%.2f,%.2f,%.2f]", 
+          cam->mat[3][0], cam->mat[3][1], cam->mat[3][2], cam->mat[3][3]);
+    LOG_I("Camera rotation components: m[0][0]=%.2f, m[1][1]=%.2f, m[2][2]=%.2f", 
+          cam->mat[0][0], cam->mat[1][1], cam->mat[2][2]);
+    
     camera_update(cam);
     
-    // DEBUG: Print camera information
+    // DEBUG: Print camera information AFTER update
     LOG_I("Camera aspect: %.2f (%.0fx%.0f)", cam->aspect, 
           (float)g_daemon_ctx.width, (float)g_daemon_ctx.height);
-    LOG_I("Camera matrix translation: [%.2f, %.2f, %.2f]", 
+    LOG_I("Camera matrix AFTER update: [%.2f, %.2f, %.2f]", 
           cam->mat[3][0], cam->mat[3][1], cam->mat[3][2]);
     LOG_I("Camera distance: %.2f, ortho: %d, fovy: %.2f", cam->dist, cam->ortho, cam->fovy);
+    LOG_I("View matrix: [%.2f,%.2f,%.2f,%.2f]", 
+          cam->view_mat[3][0], cam->view_mat[3][1], cam->view_mat[3][2], cam->view_mat[3][3]);
     
     mat4_copy(cam->view_mat, rend.view_mat);
     mat4_copy(cam->proj_mat, rend.proj_mat);
