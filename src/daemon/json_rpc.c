@@ -2274,6 +2274,7 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
     int width = 512, height = 512;
     const char *return_mode = NULL;
     const char *format = "png";
+    const char *camera_preset = NULL;  // Add camera preset support
     uint8_t background_color[4] = {240, 240, 240, 255}; // Default gray
     bool has_custom_background = false;
     
@@ -2293,6 +2294,7 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
         width = get_int_param(&request->params, -1, "width");
         height = get_int_param(&request->params, -1, "height");
         output_path = get_string_param(&request->params, -1, "output_path");
+        camera_preset = get_string_param(&request->params, -1, "camera_preset");  // Parse camera preset
         
         if (width <= 0) width = 512;
         if (height <= 0) height = 512;
@@ -2362,14 +2364,15 @@ static json_rpc_response_t *handle_goxel_render_scene(const json_rpc_request_t *
         LOG_D("Using managed file path: %s", output_path);
     }
     
-    LOG_D("Rendering scene %dx%d format %s to %s (mode: %s)", 
+    LOG_D("Rendering scene %dx%d format %s to %s (mode: %s, camera: %s)", 
           width, height, format, output_path ? output_path : "memory", 
-          use_file_transfer ? "file_transfer" : "legacy");
+          use_file_transfer ? "file_transfer" : "legacy",
+          camera_preset ? camera_preset : "default");
     
     // Render the scene
     int result;
     if (output_path) {
-        result = goxel_core_render_to_file(g_goxel_context, output_path, width, height, format, 90, NULL, has_custom_background ? background_color : NULL);
+        result = goxel_core_render_to_file(g_goxel_context, output_path, width, height, format, 90, camera_preset, has_custom_background ? background_color : NULL);
     } else {
         result = -1; // Buffer rendering not implemented
     }
