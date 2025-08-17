@@ -54,7 +54,7 @@ static const char *get_persistent_socket_path(const char *requested_path);
 // ============================================================================
 
 #define PROGRAM_NAME "goxel-daemon"
-#define VERSION "0.17.2"
+#define VERSION "0.17.32"
 #define DEFAULT_SOCKET_PATH "/tmp/goxel-daemon.sock"
 #define DEFAULT_PID_PATH "/tmp/goxel-daemon.pid"
 #define DEFAULT_LOG_PATH "/tmp/goxel-daemon.log"
