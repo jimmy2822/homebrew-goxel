@@ -221,15 +221,10 @@ int daemon_render_scene(void)
 
     // Set viewport
     glViewport(0, 0, g_daemon_ctx.width, g_daemon_ctx.height);
-    LOG_I("Set viewport: %dx%d", g_daemon_ctx.width, g_daemon_ctx.height);
+    LOG_D("Set viewport: %dx%d", g_daemon_ctx.width, g_daemon_ctx.height);
 
-    // CRITICAL TEST: Clear with bright red to verify rendering pipeline
-    glClearColor(1.0f, 0.0f, 0.0f, 1.0f); // Bright red background
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    LOG_I("Cleared framebuffer with bright red color");
-
-    // Force immediate execution
-    glFlush();
+    // Don't clear here - let render_submit handle the background
+    // The clearing will be done by render_background() with the proper color
     
     // Check for OpenGL errors
     GLenum gl_error = glGetError();
@@ -246,7 +241,7 @@ int daemon_render_scene(void)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    LOG_I("OpenGL state configured successfully");
+    LOG_D("OpenGL state configured successfully");
     return 0;
 }
 
@@ -288,11 +283,18 @@ int daemon_render_to_file(const char *filename, const char *format)
             LOG_E("Failed to get OSMesa color buffer!");
         }
         
-        // Sample buffer contents
+        // ENHANCED buffer analysis
         uint8_t *buf = (uint8_t*)g_daemon_ctx.buffer;
-        int sample_count = 0;
+        int total_pixels = g_daemon_ctx.width * g_daemon_ctx.height;
         int non_zero_pixels = 0;
-        for (int i = 0; i < g_daemon_ctx.width * g_daemon_ctx.height && sample_count < 1000; i++) {
+        int red_pixels = 0;
+        int unique_colors = 0;
+        
+        // Track unique colors (up to 100)
+        typedef struct { uint8_t r, g, b, a; int count; } color_count_t;
+        color_count_t colors[100] = {0};
+        
+        for (int i = 0; i < total_pixels; i++) {
             uint8_t r = buf[i * 4 + 0];
             uint8_t g = buf[i * 4 + 1]; 
             uint8_t b = buf[i * 4 + 2];
@@ -300,15 +302,39 @@ int daemon_render_to_file(const char *filename, const char *format)
             
             if (r != 0 || g != 0 || b != 0 || a != 0) {
                 non_zero_pixels++;
-                if (sample_count < 10) { // Log first 10 non-zero pixels
-                    LOG_I("Pixel %d: RGBA=(%d,%d,%d,%d) at position %d", sample_count, r, g, b, a, i);
+                
+                // Count red pixels (our test voxels)
+                if (r > 200 && g < 50 && b < 50) {
+                    red_pixels++;
                 }
-                sample_count++;
+                
+                // Track unique colors
+                bool found = false;
+                for (int j = 0; j < unique_colors && j < 100; j++) {
+                    if (colors[j].r == r && colors[j].g == g && colors[j].b == b && colors[j].a == a) {
+                        colors[j].count++;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && unique_colors < 100) {
+                    colors[unique_colors] = (color_count_t){r, g, b, a, 1};
+                    unique_colors++;
+                }
             }
         }
-        LOG_I("Buffer analysis: %d/%d non-zero pixels (%.1f%%)", 
-              non_zero_pixels, g_daemon_ctx.width * g_daemon_ctx.height,
-              100.0 * non_zero_pixels / (g_daemon_ctx.width * g_daemon_ctx.height));
+        
+        LOG_I("BUFFER ANALYSIS:");
+        LOG_I("  Total pixels: %d", total_pixels);
+        LOG_I("  Non-zero pixels: %d (%.1f%%)", non_zero_pixels, 100.0 * non_zero_pixels / total_pixels);
+        LOG_I("  Red pixels (test voxels): %d", red_pixels);
+        LOG_I("  Unique colors: %d", unique_colors);
+        
+        // Log the most common colors
+        for (int i = 0; i < unique_colors && i < 10; i++) {
+            LOG_I("    Color %d: RGBA=(%d,%d,%d,%d) count=%d", i, 
+                  colors[i].r, colors[i].g, colors[i].b, colors[i].a, colors[i].count);
+        }
         
         // Sample corners and center
         int center_x = g_daemon_ctx.width / 2;
@@ -483,12 +509,18 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
     // Set up viewport
     float viewport[4] = {0, 0, g_daemon_ctx.width, g_daemon_ctx.height};
 
-    // Create renderer
-    renderer_t rend = goxel.rend;
-    rend.view_mat[0][0] = 1; // Initialize view matrix
+    // Create renderer with proper initialization
+    renderer_t rend = {0};
+    
+    // Initialize renderer settings from goxel defaults
+    rend.settings = goxel.rend.settings;
     rend.fbo = 0; // Use default framebuffer
     rend.scale = 1.0;
     rend.items = NULL;
+    
+    // Initialize view matrix to identity
+    mat4_set_identity(rend.view_mat);
+    mat4_set_identity(rend.proj_mat);
 
     // DEBUG: Print image bounding box information
     LOG_I("=== RENDERING DEBUG INFO ===");
@@ -554,25 +586,33 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
         LOG_I("Processing layer %d: visible=%d, volume=%p", 
               layer_count, layer->visible, layer->volume);
         if (layer->visible && layer->volume) {
+            // Get bounding box for this layer
+            int layer_bbox[2][3];
+            volume_get_bbox(layer->volume, layer_bbox, true);
+            LOG_I("Layer %d bbox: [%d,%d,%d] to [%d,%d,%d]", layer_count,
+                  layer_bbox[0][0], layer_bbox[0][1], layer_bbox[0][2],
+                  layer_bbox[1][0], layer_bbox[1][1], layer_bbox[1][2]);
+            
             LOG_I("Calling render_volume() for layer %d", layer_count);
             
-            // DEEP DEBUG: Check OpenGL state before rendering
-            GLenum gl_error = glGetError();
-            if (gl_error != GL_NO_ERROR) {
-                LOG_E("OpenGL error before render_volume: 0x%04X", gl_error);
-            }
-            
-            // DEBUG: Check if items exist (render_item_t structure is opaque here)
-            LOG_I("Renderer items before render_volume: %s", rend.items ? "present" : "empty");
+            // Check if render items exist before render_volume
+            bool had_items_before = (rend.items != NULL);
+            LOG_I("Render items before render_volume: %s", had_items_before ? "present" : "empty");
             
             render_volume(&rend, layer->volume, layer->material, 0);
             
-            // DEBUG: Check if items were added
-            LOG_I("Renderer items after render_volume: %s", rend.items ? "present" : "empty");
+            bool has_items_after = (rend.items != NULL);
+            LOG_I("Render items after render_volume: %s", has_items_after ? "present" : "empty");
             
-            gl_error = glGetError();
-            if (gl_error != GL_NO_ERROR) {
-                LOG_E("OpenGL error after render_volume: 0x%04X", gl_error);
+            // Check if any items were actually added
+            if (has_items_after) {
+                if (!had_items_before) {
+                    LOG_I("✓ render_volume successfully added render items (first items)");
+                } else {
+                    LOG_I("✓ render_volume called (items may have been added to existing list)");
+                }
+            } else {
+                LOG_E("✗ render_volume failed to add any render items!");
             }
             
             LOG_I("render_volume() completed for layer %d", layer_count);
@@ -594,13 +634,24 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
           viewport[0], viewport[1], viewport[2], viewport[3]);
     
     // DEBUG: Check if items exist for submit
-    LOG_I("Render items for submit: %s", rend.items ? "present" : "empty");
+    bool has_final_items = (rend.items != NULL);
+    LOG_I("Final render items for submit: %s", has_final_items ? "present" : "empty");
+    
+    if (!has_final_items) {
+        LOG_E("CRITICAL: No render items to submit! This will result in blank render.");
+        LOG_I("This explains why output_path mode produces empty images!");
+    } else {
+        LOG_I("✓ Render items exist - should produce visible output");
+    }
     
     // Check OpenGL state before submit
     GLenum gl_error = glGetError();
     if (gl_error != GL_NO_ERROR) {
         LOG_E("OpenGL error before render_submit: 0x%04X", gl_error);
     }
+    
+    LOG_I("About to call render_submit with items=%s and clear color [%d,%d,%d,%d]",
+          has_final_items ? "present" : "empty", clear_color[0], clear_color[1], clear_color[2], clear_color[3]);
     
     render_submit(&rend, viewport, clear_color);
     
@@ -609,6 +660,25 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
     if (gl_error != GL_NO_ERROR) {
         LOG_E("OpenGL error after render_submit: 0x%04X", gl_error);
     }
+    
+    // CRITICAL FIX: Force OpenGL to complete all rendering operations
+    // This ensures the OSMesa buffer is fully updated before we read it
+    glFinish();
+    LOG_I("glFinish() called to ensure rendering is complete");
+    
+    // For OSMesa, we need to ensure the buffer pointer is correct
+#ifdef HAVE_OSMESA
+    if (g_daemon_ctx.backend == 0 && g_daemon_ctx.osmesa_context) {
+        GLint width, height, format;
+        void *osmesa_buffer;
+        if (OSMesaGetColorBuffer(g_daemon_ctx.osmesa_context, &width, &height, &format, &osmesa_buffer)) {
+            if (osmesa_buffer != g_daemon_ctx.buffer) {
+                LOG_W("Updating buffer pointer from OSMesa: %p -> %p", g_daemon_ctx.buffer, osmesa_buffer);
+                g_daemon_ctx.buffer = osmesa_buffer;
+            }
+        }
+    }
+#endif
     
     LOG_I("render_submit() completed");
     LOG_I("=== RENDERING DEBUG COMPLETE ===");

@@ -305,7 +305,7 @@ if target_os == 'posix':
         
         if not osmesa_found:
             print("WARNING: OSMesa not found - daemon rendering will use software fallback")
-            env.Append(CPPDEFINES=['OSMESA_RENDERING=1', 'DAEMON_SOFTWARE_FALLBACK'])
+            env.Append(CPPDEFINES=['DAEMON_SOFTWARE_FALLBACK'])
             # Still need GL library for OpenGL functions
             env.Append(LIBS=['GL'])
         
