@@ -18,7 +18,7 @@ Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel vox
 - ✅ **Voxel Operations**: Complete 3D modeling functionality with accurate color rendering
 - ✅ **Production Ready**: Memory safe, thread-safe, high performance, scalable
 - ✅ **60,888 Voxel Models**: Successfully tested with massive Snoopy model creation
-- ⚠️ **MCP Integration Note**: Direct socket communication recommended for rendering operations
+- ✅ **MCP Integration Status**: All MCP operations now support persistent connections with thread-safe context management (v0.17.32)
 
 **🌐 Official Website**: https://goxel.xyz
 

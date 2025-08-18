@@ -215,10 +215,13 @@ mcp_error_code_t mcp_handler_init(void)
         return MCP_SUCCESS;
     }
     
-    // Initialize JSON-RPC context if needed  
-    json_rpc_result_t result = json_rpc_init_goxel_context();
-    if (result != JSON_RPC_SUCCESS) {
-        return MCP_ERROR_INTERNAL;
+    // Only initialize JSON-RPC context if not already initialized by daemon
+    // This prevents overwriting daemon's per-worker contexts
+    if (!json_rpc_is_goxel_initialized()) {
+        json_rpc_result_t result = json_rpc_init_goxel_context();
+        if (result != JSON_RPC_SUCCESS) {
+            return MCP_ERROR_INTERNAL;
+        }
     }
     
     // Reset statistics
@@ -409,8 +412,9 @@ mcp_error_code_t mcp_translate_response(
     return MCP_SUCCESS;
 }
 
-mcp_error_code_t mcp_handle_tool_request(
+mcp_error_code_t mcp_handle_tool_request_with_context(
     const mcp_tool_request_t *mcp_request,
+    void *goxel_context,
     mcp_tool_response_t **mcp_response)
 {
     if (!g_mcp_initialized) {
@@ -428,8 +432,16 @@ mcp_error_code_t mcp_handle_tool_request(
         return result;
     }
     
-    // Execute JSON-RPC request
-    json_rpc_response_t *jsonrpc_response = json_rpc_handle_method(jsonrpc_request);
+    // Execute JSON-RPC request with dedicated context
+    json_rpc_response_t *jsonrpc_response = NULL;
+    if (goxel_context) {
+        // Use provided context for thread-safe execution
+        jsonrpc_response = json_rpc_handle_method_with_context(jsonrpc_request, goxel_context);
+    } else {
+        // Fallback to global context (backward compatibility)
+        jsonrpc_response = json_rpc_handle_method(jsonrpc_request);
+    }
+    
     if (!jsonrpc_response) {
         json_rpc_free_request(jsonrpc_request);
         return MCP_ERROR_INTERNAL;
@@ -443,6 +455,14 @@ mcp_error_code_t mcp_handle_tool_request(
     json_rpc_free_response(jsonrpc_response);
     
     return result;
+}
+
+mcp_error_code_t mcp_handle_tool_request(
+    const mcp_tool_request_t *mcp_request,
+    mcp_tool_response_t **mcp_response)
+{
+    // Backward compatibility - use global context
+    return mcp_handle_tool_request_with_context(mcp_request, NULL, mcp_response);
 }
 
 // ============================================================================

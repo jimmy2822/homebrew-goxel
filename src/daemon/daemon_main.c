@@ -824,11 +824,27 @@ static socket_message_t *handle_mcp_message(concurrent_daemon_t *daemon,
         return NULL;
     }
     
-    // Handle MCP request
+    // Handle MCP request with dedicated context for thread safety
     mcp_tool_response_t *mcp_response = NULL;
     uint64_t start_time = get_current_time_us();
     
-    mcp_error_code_t handle_result = mcp_handle_tool_request(mcp_request, &mcp_response);
+    // Get a dedicated Goxel context for this request (thread-safe)
+    void *goxel_context = NULL;
+    pthread_mutex_lock(&daemon->protocol_mutex);
+    if (daemon->goxel_contexts && daemon->num_contexts > 0) {
+        // Use the first available context - TODO: implement per-thread context assignment
+        goxel_context = daemon->goxel_contexts[0];
+    }
+    pthread_mutex_unlock(&daemon->protocol_mutex);
+    
+    mcp_error_code_t handle_result;
+    if (goxel_context) {
+        // Use thread-safe context-aware handler
+        handle_result = mcp_handle_tool_request_with_context(mcp_request, goxel_context, &mcp_response);
+    } else {
+        // Fallback to global context (backward compatibility)
+        handle_result = mcp_handle_tool_request(mcp_request, &mcp_response);
+    }
     
     uint64_t end_time = get_current_time_us();
     

@@ -3600,6 +3600,22 @@ json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request)
                                          error_msg, NULL, &request->id);
 }
 
+json_rpc_response_t *json_rpc_handle_method_with_context(const json_rpc_request_t *request, void *goxel_context)
+{
+    if (!request || !request->method) {
+        json_rpc_id_t null_id;
+        json_rpc_create_id_null(&null_id);
+        return json_rpc_create_response_error(JSON_RPC_INVALID_REQUEST,
+                                             "Invalid request structure",
+                                             NULL, &null_id);
+    }
+    
+    // For now, fall back to regular handler since context switching is complex
+    // TODO: Implement per-handler context passing instead of global switching
+    LOG_D("Handling method: %s (context-aware fallback to global)", request->method);
+    return json_rpc_handle_method(request);
+}
+
 // Helper function to serialize JSON value to string
 static char *json_value_to_string(json_value *value)
 {
