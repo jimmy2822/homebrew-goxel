@@ -1,10 +1,10 @@
-# CLAUDE.md - Goxel Daemon v0.17.32
+# CLAUDE.md - Goxel Daemon v0.17.4
 
 ## 📋 Project Overview
 
 Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel voxel editor, enabling programmatic control and automation of 3D voxel operations. Built with C99 for maximum performance and reliability.
 
-**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.17.32)**
+**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.17.4)**
 - ✅ **Multi-Angle Rendering**: All 7 camera presets (front, back, left, right, top, bottom, isometric) working perfectly!
 - ✅ **OSMesa Rendering**: Full offscreen rendering with 100% color accuracy
 - ✅ **Color Pipeline**: Perfect voxel color reproduction - white renders as white!
@@ -18,7 +18,7 @@ Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel vox
 - ✅ **Voxel Operations**: Complete 3D modeling functionality with accurate color rendering
 - ✅ **Production Ready**: Memory safe, thread-safe, high performance, scalable
 - ✅ **60,888 Voxel Models**: Successfully tested with massive Snoopy model creation
-- ✅ **MCP Integration Status**: All MCP operations now support persistent connections with thread-safe context management (v0.17.32)
+- ✅ **MCP Integration Status**: All MCP operations now support persistent connections with thread-safe context management and connection reuse (v0.17.4)
 
 **🌐 Official Website**: https://goxel.xyz
 
@@ -771,11 +771,24 @@ This enables multi-angle rendering:
 
 ## 📝 Version Information
 
-**Version**: 0.17.32  
-**Release Date**: January 17, 2025  
-**Status**: Fully Production Ready - Rendering Pipeline Enhanced
+**Version**: 0.17.4  
+**Release Date**: August 18, 2025  
+**Status**: Fully Production Ready - MCP Connection Reuse Enhanced
 
-### 🎉 Latest Updates (v0.17.32) - RENDERING PIPELINE IMPROVEMENTS
+### 🎉 Latest Updates (v0.17.4) - MCP CONNECTION REUSE & THREAD SAFETY
+- **🔧 MCP Connection Reuse Fix**: Fixed critical thread-safety issues in MCP server integration
+  - **Problem Solved**: MCP handler used shared global context causing contamination between concurrent requests
+  - **Solution**: Added thread-safe context management with dedicated contexts per MCP request
+  - **Impact**: Eliminates connection overhead, enables true persistent MCP connections
+- **🔧 Thread-Safe Context Management**: Extended JSON-RPC with context-aware API
+  - **New Functions**: `mcp_handle_tool_request_with_context()` and `json_rpc_handle_method_with_context()`
+  - **Context Isolation**: Each MCP request gets dedicated context preventing state conflicts
+  - **Backward Compatibility**: All existing APIs preserved with fallback to global context
+- **✅ Connection Reuse**: Single MCP connection now handles multiple requests efficiently
+- **✅ Concurrent Processing**: Thread-safe operation for multiple simultaneous MCP requests
+- **✅ All Previous Features**: Multi-angle rendering, 60K+ voxel support, rendering pipeline remain fully operational
+
+### Previous Updates (v0.17.32) - RENDERING PIPELINE IMPROVEMENTS
 - **🔧 OpenGL Synchronization Fix**: Added `glFinish()` call after render_submit to ensure complete rendering
 - **🔧 OSMesa Buffer Management**: Improved buffer pointer synchronization for correct framebuffer access
 - **🔧 Renderer Initialization**: Fixed renderer structure initialization for proper render item handling
