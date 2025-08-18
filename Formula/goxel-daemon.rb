@@ -1,14 +1,14 @@
 class GoxelDaemon < Formula
   desc "High-performance Unix socket JSON-RPC server for Goxel voxel editor"
   homepage "https://goxel.xyz"
-  version "0.17.32"
+  version "0.17.4"
   
   # Use local file URL for development
-  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-daemon-0.17.32.tar.gz"
-  sha256 "fa6be0b21d80b0176f52284911e7154052e28e4a534c3ddc1e718b583b6fe041"
+  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-daemon-0.17.4.tar.gz"
+  sha256 "71444058b949448dc15cb87f89dd0e2f823b9099b61ea8e793aade0a813b0418"
   
   # For production release, use GitHub URL:
-  # url "https://github.com/jimmy2822/goxel/releases/download/v0.17.32/goxel-daemon-0.17.32.tar.gz"
+  # url "https://github.com/jimmy2822/goxel/releases/download/v0.17.4/goxel-daemon-0.17.4.tar.gz"
   
   license "GPL-3.0-or-later"
   
