@@ -160,6 +160,20 @@ mcp_error_code_t mcp_handle_tool_request(
     mcp_tool_response_t **mcp_response
 );
 
+/**
+ * Handle MCP tool request with explicit context (for concurrent processing)
+ * 
+ * @param mcp_request MCP tool request
+ * @param goxel_context Dedicated Goxel context for this request
+ * @param mcp_response Output MCP response (caller must free)
+ * @return MCP_SUCCESS on success, error code on failure
+ */
+mcp_error_code_t mcp_handle_tool_request_with_context(
+    const mcp_tool_request_t *mcp_request,
+    void *goxel_context,
+    mcp_tool_response_t **mcp_response
+);
+
 // ============================================================================
 // BATCH OPERATIONS
 // ============================================================================

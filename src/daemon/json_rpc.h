@@ -464,6 +464,15 @@ void json_rpc_cleanup_goxel_context(void);
 json_rpc_response_t *json_rpc_handle_method(const json_rpc_request_t *request);
 
 /**
+ * Handles a JSON-RPC method call with explicit Goxel context (thread-safe).
+ * 
+ * @param request JSON-RPC request to handle
+ * @param goxel_context Dedicated Goxel context for this request
+ * @return JSON-RPC response (caller must free with json_rpc_free_response)
+ */
+json_rpc_response_t *json_rpc_handle_method_with_context(const json_rpc_request_t *request, void *goxel_context);
+
+/**
  * Handles a batch of JSON-RPC requests.
  * 
  * @param json_str JSON string containing either a single request or an array of requests
