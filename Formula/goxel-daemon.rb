@@ -1,14 +1,14 @@
 class GoxelDaemon < Formula
   desc "High-performance Unix socket JSON-RPC server for Goxel voxel editor"
   homepage "https://goxel.xyz"
-  version "0.17.4"
+  version "0.18.3"
   
   # Use local file URL for development
-  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-daemon-0.17.4.tar.gz"
-  sha256 "71444058b949448dc15cb87f89dd0e2f823b9099b61ea8e793aade0a813b0418"
+  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-daemon-0.18.3.tar.gz"
+  sha256 "54339ec1efcf63b35167babc8cbad87c41458556c40e14271e1b66f2c20b091c"
   
   # For production release, use GitHub URL:
-  # url "https://github.com/jimmy2822/goxel/releases/download/v0.17.4/goxel-daemon-0.17.4.tar.gz"
+  # url "https://github.com/jimmy2822/goxel/releases/download/v0.18.3/goxel-daemon-0.18.3.tar.gz"
   
   license "GPL-3.0-or-later"
   
@@ -39,9 +39,8 @@ class GoxelDaemon < Formula
   service do
     run [opt_bin/"goxel-daemon", 
          "--socket", var/"run/goxel/goxel.sock",
-         "--log", var/"log/goxel/goxel-daemon.log",
-         "--pid", var/"run/goxel/goxel-daemon.pid",
-         "--render-dir", var/"lib/goxel/renders",
+         "--log-file", var/"log/goxel/goxel-daemon.log",
+         "--pid-file", var/"run/goxel/goxel-daemon.pid",
          "--foreground"]
     keep_alive true
     log_path var/"log/goxel/goxel-daemon.log"
@@ -95,8 +94,10 @@ class GoxelDaemon < Formula
 
   def caveats
     <<~EOS
-      Goxel Daemon v#{version} - All Features Verified Working!
+      Goxel Daemon v#{version} - Protocol Detection Fixed!
       
+      ✅ JSON-RPC protocol detection now supports standard formatting
+      ✅ No more workarounds needed - accepts any valid JSON-RPC 2.0
       ✅ All daemon functions tested and operational
       ✅ File operations (save/export/load) fully functional
       ✅ Rendering pipeline 100% operational with perfect colors
