@@ -120,7 +120,6 @@ struct socket_message {
  * Protocol mode for client connections.
  */
 typedef enum {
-    PROTOCOL_BINARY,                /**< Binary protocol with 16-byte header */
     PROTOCOL_JSON_RPC              /**< JSON-RPC protocol */
 } protocol_mode_t;
 

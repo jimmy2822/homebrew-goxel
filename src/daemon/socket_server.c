@@ -168,12 +168,8 @@ static socket_error_t add_client(socket_server_t *server, socket_client_t *clien
 static socket_error_t remove_client(socket_server_t *server, socket_client_t *client);
 static socket_error_t setup_socket_options(int fd);
 static int64_t get_current_time_us(void);
-static socket_error_t handle_binary_client(socket_server_t *server,
-                                          socket_client_t *client);
 static socket_error_t handle_json_client(socket_server_t *server,
                                         socket_client_t *client);
-static socket_error_t read_binary_message_from_client(socket_client_t *client,
-                                                     socket_message_t **message);
 
 // ============================================================================
 // ERROR HANDLING IMPLEMENTATION
@@ -420,7 +416,7 @@ static socket_client_t *create_client(socket_server_t *server, int client_fd)
     client->buffer = malloc(client->buffer_capacity);
     client->authenticated = false;
     client->user_data = NULL;
-    client->protocol = PROTOCOL_BINARY;  // Default to binary, will be detected later
+    client->protocol = PROTOCOL_JSON_RPC;  // Only JSON-RPC protocol supported
     
     // Initialize protocol-specific data
     memset(&client->handler_data, 0, sizeof(client->handler_data));
@@ -1077,102 +1073,29 @@ static socket_error_t handle_client_connection(socket_server_t *server,
 {
     LOG_I("Handling client connection: ID=%u", client->id);
     
-    // Peek at first few bytes to detect protocol
+    // Peek at first few bytes to detect protocol type
     char magic[4];
     ssize_t peeked = recv(client->fd, magic, 4, MSG_PEEK);
     
     if (peeked >= 2 && magic[0] == '{' && magic[1] == '"') {
+        // Check if it starts with {"tool": for MCP
+        char longer_peek[16];
+        ssize_t longer_peeked = recv(client->fd, longer_peek, sizeof(longer_peek), MSG_PEEK);
+        if (longer_peeked >= 8 && strncmp(longer_peek, "{\"tool\":", 8) == 0) {
+            LOG_I("Client %u detected as MCP protocol", client->id);
+        } else {
+            LOG_I("Client %u detected as JSON-RPC protocol", client->id);
+        }
         client->protocol = PROTOCOL_JSON_RPC;
-        LOG_I("Client %u detected as JSON-RPC protocol", client->id);
-        // For JSON clients, the monitor thread handles everything including cleanup
+        // For JSON clients (including MCP), the monitor thread handles everything
         return handle_json_client(server, client);
     } else {
-        client->protocol = PROTOCOL_BINARY;
-        LOG_I("Client %u detected as binary protocol", client->id);
-        return handle_binary_client(server, client);
+        LOG_W("Client %u sent unrecognized protocol data - assuming JSON-RPC", client->id);
+        client->protocol = PROTOCOL_JSON_RPC;
+        return handle_json_client(server, client);
     }
 }
 
-static socket_error_t handle_binary_client(socket_server_t *server,
-                                          socket_client_t *client)
-{
-    LOG_I("Handling binary client: ID=%u", client->id);
-    
-    while (server->running) {
-        // Use poll to wait for data with timeout
-        struct pollfd pfd;
-        pfd.fd = client->fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        
-        int poll_result = poll(&pfd, 1, 100); // 100ms timeout
-        
-        if (poll_result < 0) {
-            if (errno == EINTR) continue;
-            LOG_E("Poll error: %s", strerror(errno));
-            break;
-        }
-        
-        if (poll_result == 0) continue; // Timeout, check running flag
-        
-        // Check for disconnection
-        if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) {
-            LOG_I("Client %u disconnected", client->id);
-            break;
-        }
-        
-        socket_message_t *message = NULL;
-        socket_error_t result = read_binary_message_from_client(client, &message);
-        
-        if (result == SOCKET_ERROR_CONNECTION_LOST) {
-            LOG_I("Client %u disconnected", client->id);
-            break;
-        }
-        
-        if (result != SOCKET_SUCCESS) {
-            LOG_W("Failed to read message from client %u: %s",
-                 client->id, socket_error_string(result));
-            
-            pthread_mutex_lock(&server->stats_mutex);
-            server->stats.message_errors++;
-            pthread_mutex_unlock(&server->stats_mutex);
-            
-            break;
-        }
-        
-        if (!message) continue; // No complete message yet
-        
-        // Update statistics
-        pthread_mutex_lock(&server->stats_mutex);
-        server->stats.messages_received++;
-        server->stats.bytes_received += message->length;
-        pthread_mutex_unlock(&server->stats_mutex);
-        
-        // Process message
-        if (server->config.msg_handler) {
-            socket_message_t *response = server->config.msg_handler(
-                server, client, message, server->config.user_data);
-            
-            if (response) {
-                socket_error_t send_result = socket_server_send_message(
-                    server, client, response);
-                if (send_result != SOCKET_SUCCESS) {
-                    LOG_W("Failed to send response to client %u: %s",
-                         client->id, socket_error_string(send_result));
-                }
-                socket_message_destroy(response);
-            }
-        }
-        
-        socket_message_destroy(message);
-    }
-    
-    // Clean up client
-    remove_client(server, client);
-    destroy_client(client);
-    
-    return SOCKET_SUCCESS;
-}
 
 static socket_error_t handle_json_client(socket_server_t *server,
                                         socket_client_t *client)
@@ -1195,99 +1118,6 @@ static socket_error_t handle_json_client(socket_server_t *server,
 // MESSAGE I/O IMPLEMENTATION
 // ============================================================================
 
-static socket_error_t read_binary_message_from_client(socket_client_t *client,
-                                                     socket_message_t **message)
-{
-    if (!client || !message) return SOCKET_ERROR_INVALID_PARAMETER;
-    
-    *message = NULL;
-    
-    // Read data into client buffer
-    while (true) {
-        ssize_t bytes_read = recv(client->fd, 
-                                 client->buffer + client->buffer_size,
-                                 client->buffer_capacity - client->buffer_size - 1,
-                                 MSG_DONTWAIT);
-        
-        if (bytes_read < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break; // No more data available
-            }
-            if (errno == EINTR) continue;
-            if (errno == ECONNRESET || errno == EPIPE) {
-                return SOCKET_ERROR_CONNECTION_LOST;
-            }
-            return SOCKET_ERROR_READ_FAILED;
-        }
-        
-        if (bytes_read == 0) {
-            return SOCKET_ERROR_CONNECTION_LOST;
-        }
-        
-        client->buffer_size += bytes_read;
-        client->buffer[client->buffer_size] = '\0';
-        
-        // Expand buffer if needed
-        if (client->buffer_size >= client->buffer_capacity - 1) {
-            size_t new_capacity = client->buffer_capacity * 2;
-            char *new_buffer = realloc(client->buffer, new_capacity);
-            if (!new_buffer) {
-                return SOCKET_ERROR_OUT_OF_MEMORY;
-            }
-            client->buffer = new_buffer;
-            client->buffer_capacity = new_capacity;
-        }
-    }
-    
-    // Try to parse a complete message from buffer
-    if (client->buffer_size < SOCKET_MESSAGE_HEADER_SIZE) {
-        return SOCKET_SUCCESS; // Need more data
-    }
-    
-    // Parse message header (assuming network byte order)
-    uint32_t msg_id, msg_type, msg_length, timestamp_high;
-    int64_t timestamp;
-    
-    memcpy(&msg_id, client->buffer, sizeof(uint32_t));
-    memcpy(&msg_type, client->buffer + 4, sizeof(uint32_t));
-    memcpy(&msg_length, client->buffer + 8, sizeof(uint32_t));
-    memcpy(&timestamp_high, client->buffer + 12, sizeof(uint32_t));
-    
-    // Convert from network byte order if needed
-    msg_id = ntohl(msg_id);
-    msg_type = ntohl(msg_type);
-    msg_length = ntohl(msg_length);
-    timestamp_high = ntohl(timestamp_high);
-    
-    // Reconstruct 64-bit timestamp (simplified - just use high part for now)
-    timestamp = (int64_t)timestamp_high << 32;
-    
-    // Check if we have the complete message
-    size_t total_message_size = SOCKET_MESSAGE_HEADER_SIZE + msg_length;
-    if (client->buffer_size < total_message_size) {
-        return SOCKET_SUCCESS; // Need more data
-    }
-    
-    // Create message structure
-    const char *msg_data = msg_length > 0 ? 
-                          client->buffer + SOCKET_MESSAGE_HEADER_SIZE : NULL;
-    *message = socket_message_create(msg_id, msg_type, msg_data, msg_length);
-    if (!*message) {
-        return SOCKET_ERROR_OUT_OF_MEMORY;
-    }
-    
-    (*message)->timestamp = timestamp;
-    
-    // Remove processed message from buffer
-    size_t remaining = client->buffer_size - total_message_size;
-    if (remaining > 0) {
-        memmove(client->buffer, client->buffer + total_message_size, remaining);
-    }
-    client->buffer_size = remaining;
-    client->buffer[client->buffer_size] = '\0';
-    
-    return SOCKET_SUCCESS;
-}
 
 static socket_error_t write_message_to_client(socket_client_t *client,
                                              const socket_message_t *message)

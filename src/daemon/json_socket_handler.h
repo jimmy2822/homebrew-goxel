@@ -21,8 +21,8 @@
  * @brief JSON-specific socket handling for the daemon.
  *
  * This module provides JSON-over-socket communication handling,
- * where JSON messages are delimited by newlines instead of using
- * the binary protocol with headers.
+ * supporting both JSON-RPC and MCP protocols with newline-delimited
+ * message format.
  */
 
 #ifndef JSON_SOCKET_HANDLER_H
