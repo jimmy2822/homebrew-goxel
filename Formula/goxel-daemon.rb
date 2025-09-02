@@ -28,7 +28,7 @@ class GoxelDaemon < Formula
     (share/"goxel/data").install Dir["data/*"] if Dir.exist?("data")
     
     # Install documentation
-    doc.install "README.md", "CHANGELOG.md", "CLAUDE.md", "CONTRIBUTING.md"
+    doc.install "README.md", "CHANGELOG.md", "CLAUDE.md"
     
     # Create runtime directories
     (var/"run/goxel").mkpath
