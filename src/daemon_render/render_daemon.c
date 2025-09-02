@@ -272,6 +272,17 @@ int daemon_render_to_file(const char *filename, const char *format)
             LOG_I("OSMesa buffer: %dx%d, format=%d, buffer=%p", width, height, format, osmesa_buffer);
             LOG_I("Our buffer: %dx%d, buffer=%p", g_daemon_ctx.width, g_daemon_ctx.height, g_daemon_ctx.buffer);
             
+            // Decode OSMesa format for color channel order debugging
+            const char *format_name = "UNKNOWN";
+            switch (format) {
+                case 0x1907: format_name = "RGB (OSMESA_RGB)"; break;     // GL_RGB
+                case 0x1908: format_name = "RGBA (OSMESA_RGBA)"; break;   // GL_RGBA  
+                case 0x80E1: format_name = "BGRA (OSMESA_BGRA)"; break;   // GL_BGRA
+                case 0x1909: format_name = "LUMINANCE"; break;            // GL_LUMINANCE
+                default: format_name = "OTHER"; break;
+            }
+            LOG_I("OSMesa COLOR FORMAT: %s (0x%04X) - This determines byte order!", format_name, format);
+            
             // Check if buffers match
             if (osmesa_buffer != g_daemon_ctx.buffer) {
                 LOG_W("OSMesa buffer (%p) differs from our buffer (%p)! Using OSMesa buffer.", 
@@ -346,6 +357,41 @@ int daemon_render_to_file(const char *filename, const char *format)
         int corner_idx = 0;
         LOG_I("Top-left corner: RGBA=(%d,%d,%d,%d)", 
               buf[corner_idx], buf[corner_idx+1], buf[corner_idx+2], buf[corner_idx+3]);
+              
+        // COLOR CHANNEL ORDER DIAGNOSTIC
+        // Look for red pixels (255, 0, 0) and see which byte order they appear as
+        bool found_red_test = false;
+        // Removed unused red_positions array to fix compilation warning
+        
+        for (int i = 0; i < total_pixels && !found_red_test; i++) {
+            uint8_t b0 = buf[i * 4 + 0];
+            uint8_t b1 = buf[i * 4 + 1]; 
+            uint8_t b2 = buf[i * 4 + 2];
+            uint8_t b3 = buf[i * 4 + 3];
+            
+            // Look for a pixel with one dominant red channel and low other channels
+            if ((b0 > 200 && b1 < 50 && b2 < 50) || 
+                (b1 > 200 && b0 < 50 && b2 < 50) ||
+                (b2 > 200 && b0 < 50 && b1 < 50)) {
+                found_red_test = true;
+                // Direct values (b0, b1, b2, b3) are used in logging below
+                
+                LOG_I("FOUND RED-ISH PIXEL [%d,%d,%d,%d] at pixel index %d", b0, b1, b2, b3, i);
+                
+                if (b0 > 200 && b1 < 50 && b2 < 50) {
+                    LOG_I("  → RED in byte 0: FORMAT IS RGBA (CORRECT)");
+                } else if (b1 > 200 && b0 < 50 && b2 < 50) {
+                    LOG_I("  → RED in byte 1: UNUSUAL FORMAT");
+                } else if (b2 > 200 && b0 < 50 && b1 < 50) {
+                    LOG_I("  → RED in byte 2: FORMAT IS BGRA (BYTE ORDER ISSUE!)");
+                }
+                break;
+            }
+        }
+        
+        if (!found_red_test) {
+            LOG_I("No red test pixel found - this could indicate rendering issues");
+        }
         
         LOG_I("=== FRAMEBUFFER BUFFER DEBUG END ===");
     }
@@ -365,12 +411,43 @@ int daemon_render_to_file(const char *filename, const char *format)
         return -1;
     }
     
+    // Check if we need BGRA->RGBA conversion
+    bool need_bgra_conversion = false;
+#ifdef HAVE_OSMESA
+    if (g_daemon_ctx.backend == 0 && g_daemon_ctx.osmesa_context) {
+        GLint mesa_w, mesa_h, mesa_format;
+        void *mesa_buf;
+        if (OSMesaGetColorBuffer(g_daemon_ctx.osmesa_context, &mesa_w, &mesa_h, &mesa_format, &mesa_buf)) {
+            if (mesa_format == 0x80E1) { // GL_BGRA
+                need_bgra_conversion = true;
+                LOG_I("OSMesa using BGRA format - will convert to RGBA for PNG");
+            } else if (mesa_format == 0x1908) { // GL_RGBA
+                LOG_I("OSMesa using RGBA format - no conversion needed");
+            }
+        }
+    }
+#endif
+    
     {
         uint8_t *src = (uint8_t*)g_daemon_ctx.buffer;
         for (int y = 0; y < h; y++) {
-            memcpy(flipped_buffer + y * w * bpp, 
-                   src + (h - 1 - y) * w * bpp, 
-                   w * bpp);
+            if (need_bgra_conversion && bpp == 4) {
+                // Convert BGRA to RGBA while flipping Y
+                uint8_t *src_row = src + (h - 1 - y) * w * bpp;
+                uint8_t *dst_row = flipped_buffer + y * w * bpp;
+                for (int x = 0; x < w; x++) {
+                    dst_row[x * 4 + 0] = src_row[x * 4 + 2]; // R = B
+                    dst_row[x * 4 + 1] = src_row[x * 4 + 1]; // G = G  
+                    dst_row[x * 4 + 2] = src_row[x * 4 + 0]; // B = R
+                    dst_row[x * 4 + 3] = src_row[x * 4 + 3]; // A = A
+                }
+                LOG_D("Row %d: BGRA->RGBA conversion applied", y);
+            } else {
+                // Normal Y-flip copy
+                memcpy(flipped_buffer + y * w * bpp, 
+                       src + (h - 1 - y) * w * bpp, 
+                       w * bpp);
+            }
         }
     }
     
@@ -653,6 +730,22 @@ int daemon_render_scene_with_camera(const image_t *image, const camera_t *camera
     LOG_I("About to call render_submit with items=%s and clear color [%d,%d,%d,%d]",
           has_final_items ? "present" : "empty", clear_color[0], clear_color[1], clear_color[2], clear_color[3]);
     
+    // CRITICAL FIX: Ensure OSMesa context is current before OpenGL operations
+    // This prevents "Assertion failed: (vertex_shader), function gl_shader_create" errors
+#ifdef HAVE_OSMESA
+    if (g_daemon_ctx.backend == 0 && g_daemon_ctx.osmesa_context) {
+        if (!OSMesaMakeCurrent(g_daemon_ctx.osmesa_context,
+                              g_daemon_ctx.buffer,
+                              GL_UNSIGNED_BYTE,
+                              g_daemon_ctx.width, g_daemon_ctx.height)) {
+            LOG_E("CRITICAL: Failed to make OSMesa context current before rendering!");
+            LOG_E("This will cause shader creation to fail with assertion errors.");
+            return -1;
+        }
+        LOG_D("OSMesa context made current before render_submit()");
+    }
+#endif
+    
     render_submit(&rend, viewport, clear_color);
     
     // Check OpenGL state after submit
@@ -735,6 +828,20 @@ int daemon_render_layers(const layer_t *layers, const camera_t *camera,
         memcpy(clear_color, background_color, 4);
     }
     
+    // CRITICAL FIX: Ensure OSMesa context is current before OpenGL operations
+#ifdef HAVE_OSMESA
+    if (g_daemon_ctx.backend == 0 && g_daemon_ctx.osmesa_context) {
+        if (!OSMesaMakeCurrent(g_daemon_ctx.osmesa_context,
+                              g_daemon_ctx.buffer,
+                              GL_UNSIGNED_BYTE,
+                              g_daemon_ctx.width, g_daemon_ctx.height)) {
+            LOG_E("CRITICAL: Failed to make OSMesa context current before rendering!");
+            return -1;
+        }
+        LOG_D("OSMesa context made current before render_submit() in daemon_render_layers");
+    }
+#endif
+    
     render_submit(&rend, viewport, clear_color);
 
     return 0;
@@ -783,6 +890,20 @@ int daemon_render_volume_direct(const volume_t *volume, const camera_t *camera,
     if (background_color) {
         memcpy(clear_color, background_color, 4);
     }
+    
+    // CRITICAL FIX: Ensure OSMesa context is current before OpenGL operations
+#ifdef HAVE_OSMESA
+    if (g_daemon_ctx.backend == 0 && g_daemon_ctx.osmesa_context) {
+        if (!OSMesaMakeCurrent(g_daemon_ctx.osmesa_context,
+                              g_daemon_ctx.buffer,
+                              GL_UNSIGNED_BYTE,
+                              g_daemon_ctx.width, g_daemon_ctx.height)) {
+            LOG_E("CRITICAL: Failed to make OSMesa context current before rendering!");
+            return -1;
+        }
+        LOG_D("OSMesa context made current before render_submit() in daemon_render_volume_direct");
+    }
+#endif
     
     render_submit(&rend, viewport, clear_color);
 

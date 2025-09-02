@@ -208,4 +208,4 @@ quick_perf_test.py
 # -------------------------------------
 /tmp/goxel.sock
 /var/run/goxel-daemon.pid
-*.sock
+*.sockgoxel-daemon-*.tar.gz

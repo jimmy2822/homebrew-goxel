@@ -135,6 +135,7 @@ void goxel_reset(void)
     goxel.rend.settings = (render_settings_t) {
         .occlusion_strength = 0.5,
         .effects = 0,
+        .ambient = 1.0,  // High ambient light to make colors visible
     };
     
     // Set default snap settings

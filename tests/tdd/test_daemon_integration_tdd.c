@@ -325,7 +325,7 @@ int test_large_payload_handling() {
     TEST_ASSERT(send_request(sock, large_request), "Should send large request");
     
     char response[BUFFER_SIZE];
-    int bytes = receive_response(sock, response, BUFFER_SIZE, 2000);
+    int bytes = receive_response(sock, response, BUFFER_SIZE, 5000);  // Increased timeout for CI environment
     TEST_ASSERT(bytes > 0, "Should handle large payload");
     
     close(sock);

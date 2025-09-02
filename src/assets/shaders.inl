@@ -201,7 +201,7 @@
     "#endif\n"
     ""
 },
-{.path = "data/shaders/volume.glsl", .size = 9420, .data =
+{.path = "data/shaders/volume.glsl", .size = 9390, .data =
     "/* Goxel 3D voxels editor\n"
     " *\n"
     " * copyright (c) 2015 Guillaume Chereau <guillaume@noctua-software.com>\n"
