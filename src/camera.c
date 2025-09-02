@@ -150,8 +150,24 @@ void camera_fit_box(camera_t *cam, const float box[4][4])
         return;
     }
     box_get_size(box, size);
-    // XXX: not the proper way to compute the distance.
-    dist = max3(size[0], size[1], size[2]) * 8;
+    
+    // Calculate proper distance based on camera FOV and object dimensions
+    // Use the diagonal of the bounding box for best fit
+    float diagonal = sqrt(size[0] * size[0] + size[1] * size[1] + size[2] * size[2]);
+    
+    // Camera FOV is 20 degrees, convert to radians and use half-angle
+    float fov_rad = (20.0f * M_PI / 180.0f) / 2.0f;
+    
+    // Distance calculation: object_radius / tan(half_fov)
+    // Add a margin factor (1.5) to ensure the object fits comfortably in view
+    dist = (diagonal / 2.0f) / tan(fov_rad) * 1.5f;
+    
+    // Ensure minimum distance to avoid being too close
+    if (dist < 32.0f) {
+        dist = 32.0f;
+    }
+    
+    // Set camera position to the center of the bounding box
     mat4_mul_vec3(box, VEC(0, 0, 0), cam->mat[3]);
     mat4_itranslate(cam->mat, 0, 0, dist);
     cam->dist = dist;
