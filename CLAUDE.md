@@ -1,10 +1,10 @@
-# CLAUDE.md - Goxel Daemon v0.18.5
+# CLAUDE.md - Goxel Daemon v0.18.6
 
 ## 📋 Project Overview
 
 Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel voxel editor, enabling programmatic control and automation of 3D voxel operations. Built with C99 for maximum performance and reliability.
 
-**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.18.5)**
+**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.18.6)**
 - ✅ **Multi-Angle Rendering**: All 7 camera presets (front, back, left, right, top, bottom, isometric) working perfectly!
 - ✅ **OSMesa Rendering**: Full offscreen rendering with 100% color accuracy
 - ✅ **Color Pipeline**: Perfect voxel color reproduction - white renders as white!
@@ -18,7 +18,8 @@ Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel vox
 - ✅ **Voxel Operations**: Complete 3D modeling functionality with accurate color rendering
 - ✅ **Production Ready**: Memory safe, thread-safe, high performance, scalable
 - ✅ **60,888 Voxel Models**: Successfully tested with massive Snoopy model creation
-- ✅ **MCP Integration Status**: All MCP operations now support persistent connections with thread-safe context management and connection reuse (v0.18.5)
+- ✅ **MCP Integration Status**: All MCP operations now support persistent connections with thread-safe context management and connection reuse (v0.18.6)
+- ✅ **Architecture Cleanup**: Binary protocol confusion eliminated - single JSON-RPC API with MCP translation layer
 
 **🌐 Official Website**: https://goxel.xyz
 
@@ -171,6 +172,22 @@ Complete programmatic control of voxel operations:
 
 # Execute with custom timeout
 {"jsonrpc": "2.0", "method": "goxel.execute_script", "params": {"script": "/* long running */", "timeout_ms": 5000}, "id": 13}
+```
+
+## 🏗️ Architecture Overview (v0.18.6)
+
+### Single API Design
+Goxel daemon implements **ONE API** with two access methods:
+
+1. **Direct JSON-RPC**: Clients send JSON-RPC requests directly to Unix socket
+2. **MCP Translation**: MCP clients send tool requests, daemon translates to JSON-RPC
+
+**Important**: There is NO binary protocol. MCP is simply a translation layer that converts MCP tool requests into JSON-RPC method calls.
+
+### Protocol Flow
+```
+MCP Client → MCP Tool Request → Translation Layer → JSON-RPC Method → Goxel Core
+Direct Client → JSON-RPC Request → Direct Processing → JSON-RPC Method → Goxel Core
 ```
 
 ### Connection Patterns
@@ -771,11 +788,25 @@ This enables multi-angle rendering:
 
 ## 📝 Version Information
 
-**Version**: 0.18.5  
-**Release Date**: September 1, 2025  
-**Status**: Fully Production Ready - Complete Rendering Pipeline Fixed
+**Version**: 0.18.6  
+**Release Date**: September 2, 2025  
+**Status**: Fully Production Ready - Architecture Cleaned Up
 
-### 🎉 Latest Updates (v0.18.5) - COMPLETE RENDERING PIPELINE FIX
+### 🎉 Latest Updates (v0.18.6) - ARCHITECTURE CLEANUP
+- **🧹 Binary Protocol Removal**: Eliminated all dead binary protocol code
+  - **Problem Solved**: Confusion about multiple protocols when only JSON-RPC exists
+  - **Implementation**: Removed `PROTOCOL_BINARY` enum, `handle_binary_client()`, and `read_binary_message_from_client()`
+  - **Simplification**: Protocol detection now only handles JSON-RPC (including MCP as translation layer)
+- **📝 Documentation Clarity**: Updated all references to clarify single API architecture
+  - **Architecture**: One JSON-RPC API with two access methods (direct and MCP translation)
+  - **MCP Role**: Clearly documented as translation layer, not separate protocol
+- **🔧 Protocol Detection**: Improved to distinguish JSON-RPC from MCP for better logging
+  - **MCP Detection**: Recognizes `{"tool":` pattern for MCP requests
+  - **Fallback**: Treats any non-JSON data as JSON-RPC (graceful degradation)
+- **✅ Backward Compatibility**: All existing JSON-RPC and MCP functionality preserved
+- **✅ Code Cleanup**: Removed ~200 lines of unused binary protocol code
+
+### Previous Updates (v0.18.5) - COMPLETE RENDERING PIPELINE FIX
 - **🔧 OpenGL Context Threading Fix**: Resolved critical shader creation failures
   - **Problem Solved**: `glCreateShader()` returning 0 due to missing OpenGL context in rendering thread
   - **Solution**: Added `OSMesaMakeCurrent()` calls before all `render_submit()` operations in `src/daemon_render/render_daemon.c`

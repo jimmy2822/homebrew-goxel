@@ -52,7 +52,7 @@ typedef struct mat4 mat4_t;
 #include <stdlib.h>
 #include <string.h>
 
-#define GOXEL_VERSION_STR "0.18.5"
+#define GOXEL_VERSION_STR "0.18.6"
 
 // Core context structure for headless operation
 typedef struct goxel_core goxel_core_context_t;
