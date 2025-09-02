@@ -1,14 +1,14 @@
 class GoxelDaemon < Formula
   desc "High-performance Unix socket JSON-RPC server for Goxel voxel editor"
   homepage "https://goxel.xyz"
-  version "0.18.3"
+  version "0.18.6"
   
   # Use local file URL for development
-  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-daemon-0.18.3.tar.gz"
-  sha256 "54339ec1efcf63b35167babc8cbad87c41458556c40e14271e1b66f2c20b091c"
+  url "file:///opt/homebrew/Library/Taps/jimmy/homebrew-goxel/goxel-0.18.6.tar.gz"
+  sha256 "b148ad36cdd9b769b5e1fe6b2adf43ab3d7eba58c7f4b1dd5abd93097acde0b5"
   
   # For production release, use GitHub URL:
-  # url "https://github.com/jimmy2822/goxel/releases/download/v0.18.3/goxel-daemon-0.18.3.tar.gz"
+  # url "https://github.com/jimmy2822/goxel/releases/download/v0.18.6/goxel-0.18.6.tar.gz"
   
   license "GPL-3.0-or-later"
   
@@ -94,12 +94,12 @@ class GoxelDaemon < Formula
 
   def caveats
     <<~EOS
-      Goxel Daemon v#{version} - Protocol Detection Fixed!
+      Goxel Daemon v#{version} - Architecture Simplified!
       
-      ✅ JSON-RPC protocol detection now supports standard formatting
-      ✅ No more workarounds needed - accepts any valid JSON-RPC 2.0
+      ✅ Binary protocol dead code removed (140 lines eliminated)
+      ✅ Clean JSON-RPC only architecture - no confusion
+      ✅ MCP method mappings fixed - render_scene works correctly
       ✅ All daemon functions tested and operational
-      ✅ File operations (save/export/load) fully functional
       ✅ Rendering pipeline 100% operational with perfect colors
       ✅ All formats verified: .gox, .vox, .obj, .ply, .txt, .pov
       
