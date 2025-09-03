@@ -57,7 +57,7 @@ build:tdd_tests:
     - echo "🧪 Building TDD test binaries..."
     - cd tests/tdd
     - make clean
-    - make all
+    - make build
   artifacts:
     paths:
       - goxel-daemon
