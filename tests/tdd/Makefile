@@ -7,6 +7,9 @@ TESTS = example_voxel_tdd test_daemon_jsonrpc_tdd test_daemon_integration_tdd
 
 all: $(TESTS) run_tests
 
+# Build-only target for CI (no test execution)
+build: $(TESTS)
+
 example_voxel_tdd: example_voxel_tdd.c tdd_framework.h
 	$(CC) $(CFLAGS) -o example_voxel_tdd example_voxel_tdd.c $(LDFLAGS)
 
@@ -35,4 +38,4 @@ run_tests: $(TESTS)
 clean:
 	rm -f $(TESTS) *.o
 
-.PHONY: all run_tests clean
+.PHONY: all build run_tests clean
