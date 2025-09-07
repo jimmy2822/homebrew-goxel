@@ -18,6 +18,7 @@
 
 #include "goxel.h"
 #include "file_format.h"
+#include "core/goxel_core.h"
 
 // XXX: this function has to be rewritten.
 static int png_export(const image_t *img, const char *path, int w, int h)
@@ -69,8 +70,30 @@ static void export_gui(file_format_t *format)
 static int export_as_png(const file_format_t *format, const image_t *img,
                          const char *path)
 {
-    png_export(img, path, img->export_width, img->export_height);
-    return 0;
+    // Try the PNG export
+    int result = png_export(img, path, img->export_width, img->export_height);
+    
+    // If it failed, check if we got an empty/small file (indicating daemon mode issue)
+    if (result == 0) {
+        FILE *f = fopen(path, "rb");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            long file_size = ftell(f);
+            fclose(f);
+            
+            // If file is suspiciously small (empty gray PNG), it's the daemon mode issue
+            if (file_size > 0 && file_size <= 6000) {  // Typical empty/gray PNG is ~5400 bytes
+                LOG_E("PNG export via 'export_model' produced empty/gray image (daemon mode limitation)");
+                LOG_E("Use 'render_scene' method instead for PNG rendering:");
+                LOG_E("  {\"jsonrpc\":\"2.0\",\"method\":\"goxel.render_scene\",\"params\":{\"output_path\":\"%s\",\"width\":%d,\"height\":%d},\"id\":1}", 
+                      path, img->export_width, img->export_height);
+                LOG_E("The empty PNG file has been left at: %s (size: %ld bytes)", path, file_size);
+                return -1;
+            }
+        }
+    }
+    
+    return result;
 }
 
 FILE_FORMAT_REGISTER(png,

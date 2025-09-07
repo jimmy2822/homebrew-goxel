@@ -1,10 +1,10 @@
-# CLAUDE.md - Goxel Daemon v0.18.6
+# CLAUDE.md - Goxel Daemon v0.18.7
 
 ## 📋 Project Overview
 
 Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel voxel editor, enabling programmatic control and automation of 3D voxel operations. Built with C99 for maximum performance and reliability.
 
-**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.18.6)**
+**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.18.7)**
 - ✅ **Multi-Angle Rendering**: All 7 camera presets (front, back, left, right, top, bottom, isometric) working perfectly!
 - ✅ **OSMesa Rendering**: Full offscreen rendering with 100% color accuracy
 - ✅ **Color Pipeline**: Perfect voxel color reproduction - white renders as white!
@@ -20,8 +20,36 @@ Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel vox
 - ✅ **60,888 Voxel Models**: Successfully tested with massive Snoopy model creation
 - ✅ **MCP Integration Status**: All MCP operations now support persistent connections with thread-safe context management and connection reuse (v0.18.6)
 - ✅ **Architecture Cleanup**: Binary protocol confusion eliminated - single JSON-RPC API with MCP translation layer
+- ✅ **PNG Export Fix (v0.18.7)**: Clear error handling for PNG export via export_model - redirects to render_scene
 
 **🌐 Official Website**: https://goxel.xyz
+
+---
+
+## ⚠️ Important: PNG Rendering in Daemon Mode
+
+**Critical Note**: In daemon mode, PNG images MUST be generated using `render_scene`, not `export_model`.
+
+### ❌ Problem (Fixed in v0.18.7)
+- `export_model` with PNG format produced empty gray images (5406 bytes)
+- No error indication - silently failed
+- Root cause: Context synchronization issue between daemon API and PNG renderer
+
+### ✅ Solution
+**Always use `render_scene` for PNG generation:**
+```python
+# CORRECT - Use render_scene for PNG
+{"jsonrpc": "2.0", "method": "goxel.render_scene", 
+ "params": {"output_path": "/path/to/output.png", "width": 800, "height": 600, "camera_preset": "isometric"}}
+
+# INCORRECT - export_model will fail with helpful error message
+{"jsonrpc": "2.0", "method": "goxel.export_model", 
+ "params": ["/path/to/output.png", "png"]}  # ← Returns error with guidance
+```
+
+**Key Differences**:
+- `render_scene`: Designed for image generation, supports camera angles, backgrounds
+- `export_model`: For 3D model formats (.gox, .vox, .obj, .ply) only
 
 ---
 
@@ -87,16 +115,18 @@ Complete programmatic control of voxel operations:
 - **✅ Thread Safe**: Concurrent client support
 - **✅ Backward Compatible**: Single-request patterns still work
 
-### File Format Support (v0.17.3 - All Formats Verified Working)
-| Format | Import | Export | Status |
-|--------|--------|--------|---------|
-| `.gox` | ✅ | ✅ | Native format - Full support |
-| `.vox` | ✅ | ✅ | MagicaVoxel - Fixed in v0.16.3 |
-| `.obj` | ✅ | ✅ | Wavefront OBJ - Full support |
-| `.ply` | ✅ | ✅ | Stanford PLY - Full support |
-| `.png` | ✅ | ✅ | Image slices - Full support |
-| `.txt` | ❌ | ✅ | Text format - Export only |
-| `.pov` | ❌ | ✅ | POV-Ray - Export only |
+### File Format Support (v0.18.7 - Updated)
+| Format | Import | Export via `export_model` | Export via `render_scene` | Status |
+|--------|--------|---------------------------|---------------------------|---------|
+| `.gox` | ✅ | ✅ | N/A | Native format - Full support |
+| `.vox` | ✅ | ✅ | N/A | MagicaVoxel - Working |
+| `.obj` | ✅ | ✅ | N/A | Wavefront OBJ - Full support |
+| `.ply` | ✅ | ✅ | N/A | Stanford PLY - Full support |
+| `.png` | ✅ | ❌ (daemon mode) | ✅ | **Use `render_scene` for PNG generation** |
+| `.txt` | ❌ | ✅ | N/A | Text format - Export only |
+| `.pov` | ❌ | ✅ | N/A | POV-Ray - Export only |
+
+**Note**: In daemon mode, PNG images must be generated using `render_scene`, not `export_model`.
 
 ### Rendering Capabilities
 - **OSMesa Integration**: Complete offscreen rendering
@@ -140,22 +170,31 @@ Complete programmatic control of voxel operations:
 {"jsonrpc": "2.0", "method": "goxel.list_layers", "params": [], "id": 9}
 ```
 
-### Rendering
+### Rendering (IMPORTANT: Use render_scene for PNG)
 ```python
-# Render scene to PNG (v0.17.3 - IMPORTANT: Use object format for parameters)
-# Correct format:
+# ✅ CORRECT: Render scene to PNG using render_scene
 {"jsonrpc": "2.0", "method": "goxel.render_scene", "params": {"output_path": "/tmp/output.png", "width": 800, "height": 600}, "id": 6}
 
-# Legacy array format (may not work with all parameters):
-{"jsonrpc": "2.0", "method": "goxel.render_scene", "params": ["output.png", 800, 600], "id": 6}
+# ❌ WRONG: Do NOT use export_model for PNG (will return error in daemon mode)
+{"jsonrpc": "2.0", "method": "goxel.export_model", "params": ["/tmp/output.png", "png"], "id": 6}
 
-# With camera preset (WORKING in v0.17.3):
+# With camera preset (ALL WORKING):
 {"jsonrpc": "2.0", "method": "goxel.render_scene", "params": {
     "output_path": "/tmp/output.png", 
     "width": 800, 
     "height": 600,
-    "camera_preset": "isometric"  # Options: front, back, left, right, top, bottom, isometric (ALL WORKING!)
+    "camera_preset": "isometric"  # Options: front, back, left, right, top, bottom, isometric
 }, "id": 6}
+
+# With custom background color:
+{"jsonrpc": "2.0", "method": "goxel.render_scene", "params": {
+    "output_path": "/tmp/output.png",
+    "width": 800,
+    "height": 600,
+    "options": {
+        "background_color": [0, 0, 0, 255]  # Black background
+    }
+}, "id": 7}
 ```
 
 ### Script Execution
@@ -788,11 +827,22 @@ This enables multi-angle rendering:
 
 ## 📝 Version Information
 
-**Version**: 0.18.6  
-**Release Date**: September 2, 2025  
-**Status**: Fully Production Ready - Architecture Cleaned Up
+**Version**: 0.18.7  
+**Release Date**: January 17, 2025  
+**Status**: Fully Production Ready - PNG Export Fixed
 
-### 🎉 Latest Updates (v0.18.6) - ARCHITECTURE CLEANUP
+### 🎉 Latest Updates (v0.18.7) - PNG EXPORT FIX
+- **🔧 PNG Export Error Handling**: Fixed silent failure when using `export_model` with PNG format
+  - **Problem Solved**: `export_model` with PNG produced empty gray images without error indication
+  - **Solution**: Now returns clear error message directing users to use `render_scene` instead
+  - **User Impact**: No more confusion about empty PNG files - clear guidance provided
+- **📝 Documentation Updates**: Added clear guidance on PNG rendering methods
+  - **render_scene**: For image generation (PNG, JPEG, BMP)
+  - **export_model**: For 3D model formats only (.gox, .vox, .obj, .ply)
+- **✅ Backward Compatibility**: All existing functionality preserved
+- **✅ Test Coverage**: Added comprehensive test script for render_scene validation
+
+### Previous Updates (v0.18.6) - ARCHITECTURE CLEANUP
 - **🧹 Binary Protocol Removal**: Eliminated all dead binary protocol code
   - **Problem Solved**: Confusion about multiple protocols when only JSON-RPC exists
   - **Implementation**: Removed `PROTOCOL_BINARY` enum, `handle_binary_client()`, and `read_binary_message_from_client()`
