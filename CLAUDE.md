@@ -1,10 +1,10 @@
-# CLAUDE.md - Goxel Daemon v0.18.7
+# CLAUDE.md - Goxel Daemon v0.19.0
 
 ## 📋 Project Overview
 
 Goxel-daemon is a high-performance Unix socket JSON-RPC server for the Goxel voxel editor, enabling programmatic control and automation of 3D voxel operations. Built with C99 for maximum performance and reliability.
 
-**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.18.7)**
+**🎯 Current Status: FULLY PRODUCTION READY - ALL SYSTEMS OPERATIONAL (v0.19.0)**
 - ✅ **Multi-Angle Rendering**: All 7 camera presets (front, back, left, right, top, bottom, isometric) working perfectly!
 - ✅ **OSMesa Rendering**: Full offscreen rendering with 100% color accuracy
 - ✅ **Color Pipeline**: Perfect voxel color reproduction - white renders as white!
@@ -827,11 +827,19 @@ This enables multi-angle rendering:
 
 ## 📝 Version Information
 
-**Version**: 0.18.7  
+**Version**: 0.19.0  
 **Release Date**: January 17, 2025  
-**Status**: Fully Production Ready - PNG Export Fixed
+**Status**: Fully Production Ready - PNG Export Fixed & Enhanced
 
-### 🎉 Latest Updates (v0.18.7) - PNG EXPORT FIX
+### 🎉 Latest Updates (v0.19.0) - MAJOR VERSION BUMP
+- **🚀 Version 0.19.0**: Major version milestone with all critical fixes integrated
+- **🔧 PNG Export Fix from v0.18.7**: Comprehensive PNG export error handling
+  - Clear error messages when using export_model with PNG
+  - Proper guidance to use render_scene instead
+- **📝 Full Documentation**: Complete API reference and usage guides
+- **✅ Production Stable**: All systems tested and operational
+
+### Previous Updates (v0.18.7) - PNG EXPORT FIX
 - **🔧 PNG Export Error Handling**: Fixed silent failure when using `export_model` with PNG format
   - **Problem Solved**: `export_model` with PNG produced empty gray images without error indication
   - **Solution**: Now returns clear error message directing users to use `render_scene` instead
