@@ -1,0 +1,534 @@
+{
+  "timestamp": 1757304296.7793002,
+  "daemon_version": "0.19.0",
+  "total_tests": 40,
+  "passed_tests": 7,
+  "failed_tests": 33,
+  "success_rate": 17.5,
+  "errors": [
+    "goxel.list_methods: Method not found: goxel.list_methods",
+    "goxel.get_info: Method not found: goxel.get_info",
+    "goxel.ping: Method not found: goxel.ping",
+    "goxel.version: Method not found: goxel.version",
+    "goxel.help: Method not found: goxel.help",
+    "goxel.paint_voxels: Failed to paint voxel: error code -1",
+    "goxel.get_voxels_region: Parameter 'min' must be an array of 3 integers",
+    "goxel.get_color_histogram: Request failed: 'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte",
+    "goxel.find_voxels_by_color: No response received",
+    "goxel.get_unique_colors: Request failed: [Errno 32] Broken pipe",
+    "goxel.batch_operations: Request failed: [Errno 32] Broken pipe",
+    "goxel.procedural_shape: Request failed: [Errno 32] Broken pipe",
+    "goxel.create_project: Request failed: [Errno 32] Broken pipe",
+    "goxel.list_layers: Request failed: [Errno 32] Broken pipe",
+    "goxel.create_layer: Request failed: [Errno 32] Broken pipe",
+    "goxel.delete_layer: Request failed: [Errno 32] Broken pipe",
+    "goxel.set_layer_visibility: Request failed: [Errno 32] Broken pipe",
+    "goxel.merge_layers: Request failed: [Errno 32] Broken pipe",
+    "goxel.create_project: Request failed: [Errno 32] Broken pipe",
+    "goxel.add_voxel: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_model: Request failed: [Errno 32] Broken pipe",
+    "goxel.export: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_to_file: Request failed: [Errno 32] Broken pipe",
+    "goxel.save_as: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_model: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_model: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_model: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_model: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_model: Request failed: [Errno 32] Broken pipe",
+    "goxel.create_project: Request failed: [Errno 32] Broken pipe",
+    "goxel.add_voxel: Request failed: [Errno 32] Broken pipe",
+    "goxel.add_voxel: Request failed: [Errno 32] Broken pipe",
+    "goxel.add_voxel: Request failed: [Errno 32] Broken pipe",
+    "goxel.render_scene: Request failed: [Errno 32] Broken pipe",
+    "goxel.render_scene: No render file created",
+    "goxel.render_scene: Request failed: [Errno 32] Broken pipe",
+    "goxel.render_scene: Request failed: [Errno 32] Broken pipe",
+    "goxel.render: Request failed: [Errno 32] Broken pipe",
+    "goxel.render: No render file created",
+    "goxel.render: Request failed: [Errno 32] Broken pipe",
+    "goxel.render: Request failed: [Errno 32] Broken pipe",
+    "goxel.render_to_file: Request failed: [Errno 32] Broken pipe",
+    "goxel.render_to_file: No render file created",
+    "goxel.render_to_file: Request failed: [Errno 32] Broken pipe",
+    "goxel.render_to_file: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_png: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_png: No render file created",
+    "goxel.export_png: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_png: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_image: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_image: No render file created",
+    "goxel.export_image: Request failed: [Errno 32] Broken pipe",
+    "goxel.export_image: Request failed: [Errno 32] Broken pipe",
+    "goxel.screenshot: Request failed: [Errno 32] Broken pipe",
+    "goxel.screenshot: No render file created",
+    "goxel.screenshot: Request failed: [Errno 32] Broken pipe",
+    "goxel.screenshot: Request failed: [Errno 32] Broken pipe",
+    "goxel.capture: Request failed: [Errno 32] Broken pipe",
+    "goxel.capture: No render file created",
+    "goxel.capture: Request failed: [Errno 32] Broken pipe",
+    "goxel.capture: Request failed: [Errno 32] Broken pipe",
+    "goxel.execute_script: Request failed: [Errno 32] Broken pipe",
+    "goxel.execute_script: Request failed: [Errno 32] Broken pipe",
+    "script.execute: Request failed: [Errno 32] Broken pipe",
+    "execute_script: Request failed: [Errno 32] Broken pipe"
+  ],
+  "test_results": {
+    "goxel.get_status": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "version": "0.19.0",
+          "layer_count": 1,
+          "read_only": false,
+          "width": 32,
+          "height": 32,
+          "depth": 32
+        },
+        "id": 1
+      },
+      "description": "Get current project status"
+    },
+    "goxel.list_methods": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found: goxel.list_methods"
+        },
+        "id": 1
+      },
+      "description": "List available methods"
+    },
+    "goxel.get_info": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found: goxel.get_info"
+        },
+        "id": 1
+      },
+      "description": "Get daemon info"
+    },
+    "goxel.ping": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found: goxel.ping"
+        },
+        "id": 1
+      },
+      "description": "Ping daemon"
+    },
+    "goxel.version": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found: goxel.version"
+        },
+        "id": 1
+      },
+      "description": "Get version"
+    },
+    "goxel.help": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32601,
+          "message": "Method not found: goxel.help"
+        },
+        "id": 1
+      },
+      "description": "Get help"
+    },
+    "goxel.create_project": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": ""
+    },
+    "goxel.add_voxel": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": ""
+    },
+    "goxel.save_project": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "success": true,
+          "path": "/var/folders/rt/9jl307_j0mz499jsbbyq9fm80000gn/T/tmpyxgkhcuu/test_project.gox"
+        },
+        "id": 1
+      },
+      "description": "Save project to /var/folders/rt/9jl307_j0mz499jsbbyq9fm80000gn/T/tmpyxgkhcuu/test_project.gox"
+    },
+    "goxel.load_project": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "success": true,
+          "path": "/var/folders/rt/9jl307_j0mz499jsbbyq9fm80000gn/T/tmpyxgkhcuu/test_project.gox"
+        },
+        "id": 1
+      },
+      "description": "Load project from /var/folders/rt/9jl307_j0mz499jsbbyq9fm80000gn/T/tmpyxgkhcuu/test_project.gox"
+    },
+    "goxel.get_voxel": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "x": 16,
+          "y": 16,
+          "z": 16,
+          "exists": true,
+          "color": [
+            255,
+            255,
+            255,
+            255
+          ]
+        },
+        "id": 1
+      },
+      "description": "Get voxel at position"
+    },
+    "goxel.remove_voxel": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "success": true,
+          "x": 16,
+          "y": 16,
+          "z": 16,
+          "layer_id": 0
+        },
+        "id": 1
+      },
+      "description": "Remove voxel"
+    },
+    "goxel.paint_voxels": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -1009,
+          "message": "Failed to paint voxel: error code -1"
+        },
+        "id": 1
+      },
+      "description": "Paint region"
+    },
+    "goxel.flood_fill": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "success": true,
+          "voxels_filled": 1
+        },
+        "id": 1
+      },
+      "description": "Flood fill"
+    },
+    "goxel.get_voxels_region": {
+      "success": false,
+      "response": {
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32602,
+          "message": "Parameter 'min' must be an array of 3 integers"
+        },
+        "id": 1
+      },
+      "description": "Get voxels in region"
+    },
+    "goxel.get_bounding_box": {
+      "success": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "result": {
+          "empty": false,
+          "min": [
+            16,
+            16,
+            16
+          ],
+          "max": [
+            17,
+            17,
+            17
+          ],
+          "dimensions": [
+            2,
+            2,
+            2
+          ]
+        },
+        "id": 1
+      },
+      "description": "Get model bounding box"
+    },
+    "goxel.get_color_histogram": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: 'utf-8' codec can't decode byte 0x80 in position 0: invalid start byte"
+        }
+      },
+      "description": "Get color histogram"
+    },
+    "goxel.find_voxels_by_color": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "No response received"
+        }
+      },
+      "description": "Find white voxels"
+    },
+    "goxel.get_unique_colors": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Get unique colors"
+    },
+    "goxel.batch_operations": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Batch operations"
+    },
+    "goxel.procedural_shape": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Create sphere"
+    },
+    "goxel.list_layers": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "List current layers"
+    },
+    "goxel.create_layer": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Create new layer"
+    },
+    "goxel.delete_layer": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Delete layer"
+    },
+    "goxel.set_layer_visibility": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Set layer visibility"
+    },
+    "goxel.merge_layers": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Merge layers"
+    },
+    "goxel.export_model": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Export to .pov format"
+    },
+    "goxel.export": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Export to obj format"
+    },
+    "goxel.export_to_file": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Export to obj format"
+    },
+    "goxel.save_as": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Export to obj format"
+    },
+    "goxel.render_scene": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.render": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.render_to_file": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.export_png": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.export_image": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.screenshot": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.capture": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Render with params format 3"
+    },
+    "goxel.execute_script": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Execute console log"
+    },
+    "script.execute": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Execute via script namespace"
+    },
+    "execute_script": {
+      "success": false,
+      "response": {
+        "error": {
+          "code": -1,
+          "message": "Request failed: [Errno 32] Broken pipe"
+        }
+      },
+      "description": "Execute without namespace"
+    }
+  }
+}

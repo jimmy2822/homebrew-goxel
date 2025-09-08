@@ -1,0 +1,124 @@
+name: Test Goxel Daemon
+
+on:
+  push:
+    branches: [ main, develop, 'release/**' ]
+    paths:
+      - 'src/daemon/**'
+      - 'tests/test_daemon_*.py'
+      - '.github/workflows/test-daemon.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/daemon/**'
+      - 'tests/test_daemon_*.py'
+      - '.github/workflows/test-daemon.yml'
+  workflow_dispatch:
+
+jobs:
+  test-daemon:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.8', '3.10']
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          scons \
+          pkg-config \
+          libpng-dev \
+          libglfw3-dev \
+          libgtk-3-dev \
+          mesa-common-dev \
+          libosmesa6-dev
+    
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install scons pkg-config libpng glfw osmesa
+    
+    - name: Build daemon
+      run: |
+        export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH"
+        scons daemon=1 -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+    
+    - name: Start daemon
+      run: |
+        ./goxel-daemon --foreground --socket /tmp/goxel-test.sock &
+        echo $! > /tmp/goxel-daemon.pid
+        sleep 2  # Give daemon time to start
+    
+    - name: Run CI tests
+      run: |
+        python3 tests/test_daemon_ci.py
+      env:
+        GOXEL_SOCKET: /tmp/goxel-test.sock
+    
+    - name: Run stability tests
+      run: |
+        if [ -f tests/test_daemon_stability.py ]; then
+          python3 tests/test_daemon_stability.py
+        fi
+      continue-on-error: true  # Don't fail if stability test doesn't exist yet
+    
+    - name: Stop daemon
+      if: always()
+      run: |
+        if [ -f /tmp/goxel-daemon.pid ]; then
+          kill $(cat /tmp/goxel-daemon.pid) || true
+        fi
+        rm -f /tmp/goxel-test.sock /tmp/goxel-daemon.pid
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: |
+          tests/*.log
+          /tmp/test_*.gox
+          /tmp/test_*.png
+          /tmp/test_*.obj
+        retention-days: 7
+
+  validate-exports:
+    needs: test-daemon
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download test artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: test-artifacts
+    
+    - name: Validate exported files
+      run: |
+        echo "Checking exported files from tests..."
+        find test-artifacts -name "*.gox" -exec file {} \;
+        find test-artifacts -name "*.png" -exec file {} \;
+        find test-artifacts -name "*.obj" -exec wc -l {} \;
+    
+    - name: Summary
+      run: |
+        echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Files Generated" >> $GITHUB_STEP_SUMMARY
+        echo "- GOX files: $(find test-artifacts -name "*.gox" | wc -l)" >> $GITHUB_STEP_SUMMARY
+        echo "- PNG files: $(find test-artifacts -name "*.png" | wc -l)" >> $GITHUB_STEP_SUMMARY
+        echo "- OBJ files: $(find test-artifacts -name "*.obj" | wc -l)" >> $GITHUB_STEP_SUMMARY
